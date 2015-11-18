@@ -1,0 +1,28 @@
+Pre-processing of raw Chajul data from Frans.
+1) Changed column names
+2) Renamed sites
+3) Convert blanks in DBH and HT to NA
+4) Convert #REF! in DBH and HT to NA
+5) Convert 0 values in DBH and HT to NA
+
+Pre-processing of new Chajul data from Madelon (April 27 2015).
+1) Changed column names to match above 
+2) Renamed sites
+3) Convert blanks in DBH and HT to NA
+4) Convert ? in DBH and HT to NA
+5) Convert 0 values in DBH and HT to NA
+
+
+
+QUESTIONS
+Do functional traits related to variation in growth and mortality during succession?
+- Traits are often related to species average growth and survival.
+- We know less about how traits mediate demographic response to abiotic conditions.
+- During succession of wet tropical forests, light availability rapidly declines
+- Species with traits that convey rapid growth in open conditions should be more sensitive to shade
+	- Acquisitive species should have a decline in growth and increase in mortality along the successional gradient
+	- Conservative species should have less variable growth rates and lower mortality during succession.
+
+Need to include plot age
+
+- Create site census table to tell which census dates were conducted or not in each site so as to assess proper mortality

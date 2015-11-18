@@ -7,7 +7,7 @@ library(FD)
 ###################
 #### LOAD DATA ####
 ###################
-setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/Neoselvas/Chajul/DATA")
+setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
 load("Chajul_data_processed_wtraits_4.27.15.RDA")
 load("Chajul_census_processed_8.25.15.RDA")
 totalBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
@@ -116,7 +116,6 @@ sink()
 ### Set initial values, monitors, iterations and run model ###
 ################################################
 
-# Set initial values
 inits <- function (eps=0.1){  
   list(beta.t = rnorm(2),
        mu.beta = rnorm(3),
@@ -126,13 +125,13 @@ inits <- function (eps=0.1){
 }
 
 # Set monitors
-params <- c("beta.t","mu.beta","sigma")
+params <- c("beta.1","beta.2","beta.3","beta.t","mu.beta","sigma")
 
 # Run model
-adapt <- 500
-iter <- 500
-burn <- 250
-thin <- 2
+adapt <- 2500
+iter <- 5000
+burn <- 2500
+thin <- 5
 chains <- 3
 
 mod <- jagsUI::jags(d, inits, params, 
