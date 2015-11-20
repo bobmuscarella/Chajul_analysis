@@ -1,13 +1,13 @@
 library(reshape2)
 library(RColorBrewer)
 
-setwd("/Users/Bob/Projects/Neoselvas/Chajul/DATA")
+setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
 data <- read.csv("Chajul_data_4.27.15.csv")
 data$HT12 <- as.numeric(as.character(data$HT12))
 plots <- read.csv("plot_ages.csv")
 
-head(data)
-head(plots)
+#head(data)
+#head(plots)
 
 data$uID <- paste(as.character(data$SITE2), as.character(data$TAG), as.character(data$NUMBER), sep='.')
 data <- data[!data$TAG=="",]  # DROP RECORDS WITH NO TAG
@@ -15,12 +15,22 @@ outs <- names(table(data$uID))[table(data$uID)==2]
 data <- data[!data$uID %in% outs,]
 data$AGE00 <- plots$AGE00[match(data$SITE, plots$SITE)]
 
-head(data)
-names(data)
-d <- data[,!(colnames(data) %in% paste('HT',0:14,sep=''))] 
-head(d)
+### Change some error in species names
+data$SPECIES[data$SPECIES=="trema laxiflora"] <- "Trema laxiflora"
+data$SPECIES[data$SPECIES=='Bursera simarouba'] <- 'Bursera simaruba'
+data$SPECIES[data$SPECIES=='Guettarda anomala'] <- 'Guatteria anomala'
+data$SPECIES[data$SPECIES=='Phylostillum subcesile'] <- 'Phylostilon subsessile'
+data$SPECIES[data$SPECIES=='Senna papilosa'] <- 'Senna papillosa'
+data <- droplevels(data)
 
-d <- melt(d, id.vars = c("uID","OLDSITE","SITE2","NUMBER","YEAR_RECRUIT","TAG","SITE","QUAD","SUBQUAD","TAG","SPECIES","NOTES",'AGE00'))
+### Remove height data (for now...)
+d <- data[,!(colnames(data) %in% paste('HT',0:14,sep=''))] 
+
+names(d)
+
+d <- melt(d, id.vars = c("uID","OLDSITE","SITE2","NUMBER",
+                         "YEAR_RECRUIT","TAG","SITE","QUAD",
+                         "SUBQUAD","TAG","SPECIES","NOTES",'AGE00'))
 d <- d[order(d$uID),]
 d$census <- 0:14
 colnames(d)[colnames(d)=='value'] <- 'DBH'
@@ -30,28 +40,22 @@ censuses <- as.character(census$SITE.CENSUS[census$TAKEN=="TRUE"])
 census$year <- substring(as.character(as.Date(as.character(census$DATE), format='%m/%d/%y')),1,4)
 head(census)
 
-# PLOT CENSUS VERSUS AGE
-census$DATE <- as.Date(census$DATE, format='%m/%d/%y')
-plot(census$DATE[census$PE==F], census$AGE00[census$PE==F]+census$CENSUS[census$PE==F], col=0, axes=F, ylab="Years Post Abandonment", xlab="Calendar Year", ylim=c(0,30))	
-for(i in 1:length(unique(census$SITE2))){
-	site <- census[census$SITE2 == unique(census$SITE2)[i],]
-	site <- site[site$PE==FALSE,]
-	col <- c(brewer.pal(12,"Set3"),brewer.pal(8,"Set2"), brewer.pal(9,"Set1"))
-	points(site$DATE, jitter(site$AGE00+site$CENSUS), type='l', col=col[i], lwd=2, pch=21)
-	points(site$DATE, jitter(site$AGE00+site$CENSUS), type='p', bg=col[i], pch=21)
-}
-axis(1, labels=1999:2014, at=as.Date(paste(1,1,2000:2015,sep='/'), format='%m/%d/%Y'), las=2)
-axis(2)
+### PLOT CENSUS VERSUS AGE
+#census$DATE <- as.Date(census$DATE, format='%m/%d/%y')
+#plot(census$DATE[census$PE==F], census$AGE00[census$PE==F]+census$CENSUS[census$PE==F], col=0, axes=F, ylab="Years Post Abandonment", xlab="Calendar Year", ylim=c(0,30))	
+#for(i in 1:length(unique(census$SITE2))){
+#	site <- census[census$SITE2 == unique(census$SITE2)[i],]
+#	site <- site[site$PE==FALSE,]
+#	col <- c(brewer.pal(12,"Set3"),brewer.pal(8,"Set2"), brewer.pal(9,"Set1"))
+#	points(site$DATE, jitter(site$AGE00+site$CENSUS), type='l', col=col[i], lwd=2, pch=21)
+#	points(site$DATE, jitter(site$AGE00+site$CENSUS), type='p', bg=col[i], pch=21)
+#}
+#axis(1, labels=1999:2014, at=as.Date(paste(1,1,2000:2015,sep='/'), format='%m/%d/%Y'), las=2)
+#axis(2)
 
-
-# d$SITE.CENSUS <- paste(d$SITE2, d$census, sep='.')
 d$SITE.CENSUS <- paste(d$SITE2, d$census, sep='.')
-
-head(d)
 census$DATE <- as.Date(census$DATE, format='%m/%d/%y')
 d$DATE <- census$DATE[match(d$SITE.CENSUS, as.character(census$SITE.CENSUS))]
-
-
 
 d$growth <- NA
 d$YEAR_RECRUIT2 <- NA
@@ -59,12 +63,11 @@ d$survive <- NA
 d$year <- 2000:2014
 d$status <- 	ifelse(!d$SITE.CENSUS %in% censuses, 'unknown', ifelse(is.na(d$DBH), 'dead', 'alive'))
 
+### Correct for problematic measurements with straightforward error (determined by hand)...
 fix <- read.csv("fix_diams.csv")
 d$DBH[paste(d$uID, d$variable) %in% paste(fix$uID, fix$variable)] <- fix$NEW
-
 me <- read.csv("remove_for_measurement_error.csv")
 d <- d[!d$uID %in% me$uID,]
-
 
 d <- d[order(d$census, d$uID),]
 g <- vector()
@@ -183,13 +186,14 @@ census$stemdens <- stemdens[match(census$SITE.CENSUS, names(stemdens))]
 	# # points((census$ages+census$CENSUS)[census$SITE==site], census$stemdens[census$SITE==site], type='l', col=col[i], lwd=3)	
 # # }
 
-
 data <- tmp2
 
-setwd("/Users/Bob/Projects/Neoselvas/Chajul/DATA")
+setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
+#save(data, file="Chajul_data_processed_notraits_11.20.15.RDA")
+#save(census, file="Chajul_census_processed_11.20.15.RDA")
 #save(data, file="Chajul_data_processed_notraits_4.27.15.RDA")
 #save(census, file="Chajul_census_processed_8.25.15.RDA")
-load("Chajul_data_processed_notraits_4.27.15.RDA")
+load("Chajul_data_processed_notraits_11.20.15.RDA")
 head(data)
 
 ## READ IN TRAIT DATA
@@ -214,19 +218,48 @@ data$log.Ft <- log(data$Ft)
 data$log.P <- log(data$P)
 data$log.N <- log(data$N)
 
+#save(data, file="Chajul_data_processed_wtraits_11.20.15.RDA")
 #save(data, file="Chajul_data_processed_wtraits_4.27.15.RDA")
-load("Chajul_data_processed_wtraits_4.27.15.RDA")
+load("Chajul_data_processed_wtraits_11.20.15.RDA")
 load("Chajul_census_processed_8.25.15.RDA")
-head(data)
+
+
+### ADD CHAVE WD AND GENUS-LEVEL AVERAGE WD DATA... 
+setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
+load("Chajul_data_processed_wtraits_11.20.15.RDA")
+load("Chajul_census_processed_8.25.15.RDA")
+tdata <- read.csv('Mean_traits_4.27.15.csv')
+
+
+nowd <- sort(as.character(unique(data$SPECIES[is.na(data$WD)])))
+chave <- read.csv('ChaveWoodDensity.csv')
+chave$sp <- paste(chave$GENUS, chave$SPECIES)
+chavetmp <- chave[chave$sp %in% nowd,c('sp','WSG')]
+newwd <- chavetmp$WSG[match(data$SPECIES, chavetmp$sp)]
+data$all.WD <- ifelse(!is.na(data$WD), data$WD, newwd)
+
+wd <- tapply(data$all.WD, data$SPECIES, mean)
+genus.list <- unlist(lapply(strsplit(names(wd), " "), function(x) x[[1]]))
+genus.wd <- tapply(wd, genus.list, mean, na.rm=T)
+data$genus <- unlist(lapply(strsplit(as.character(data$SPECIES), " "), function(x) x[[1]]))
+newwd <- genus.wd[match(data$genus, names(genus.wd))]
+data$all.WD <- ifelse(!is.na(data$all.WD), data$all.WD, newwd)
+
+#save(data, file="Chajul_data_processed_wtraits_11.20.15.RDA")
+load("Chajul_data_processed_wtraits_11.20.15.RDA")
+load("Chajul_census_processed_8.25.15.RDA")
 
 
 
+###########################
+### END DATA PROCESSING ###
+###########################
 
+# \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ #
 
-
-
-
-
+##################################
+### START EXPLORATORY PLOTTING ###
+##################################
 
 par(mfrow=c(4,4), mar=c(2,2,2,2))
 col <- c(brewer.pal(12,"Set3")[c(1,3:8,10:12)],brewer.pal(8,"Set2"), brewer.pal(9,"Set1")[c(1:5,7:8)])
@@ -242,7 +275,6 @@ for (i in 1:length(unique(census$SITE))){
 	points((census$ages+census$CENSUS)[census$SITE==site], census$cwm[census$SITE==site], type='l', col=col[i], lwd=1)
 	}
 }
-
 
 ###  PLOT SLA, WD
 par(mfrow=c(2,2), mar=c(2,2,2,2))
@@ -266,10 +298,6 @@ for (i in 1:length(unique(census$SITE))){
 #	points(y[census$SITE==site], census$cwm[census$SITE==site], col=1, pch=16)
 	}
 }
-
-
-
-
 
 
 
