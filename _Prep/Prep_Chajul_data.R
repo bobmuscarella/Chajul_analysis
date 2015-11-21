@@ -23,18 +23,58 @@ data$SPECIES[data$SPECIES=='Phylostillum subcesile'] <- 'Phylostilon subsessile'
 data$SPECIES[data$SPECIES=='Senna papilosa'] <- 'Senna papillosa'
 data <- droplevels(data)
 
-### Remove height data (for now...)
+### Melt the DBH data...
 d <- data[,!(colnames(data) %in% paste('HT',0:14,sep=''))] 
-
-names(d)
 
 d <- melt(d, id.vars = c("uID","OLDSITE","SITE2","NUMBER",
                          "YEAR_RECRUIT","TAG","SITE","QUAD",
-                         "SUBQUAD","TAG","SPECIES","NOTES",'AGE00'))
+                         "SUBQUAD","TAG","SPECIES","NOTES",'AGE00'),
+          value.name='DBH')
 d <- d[order(d$uID),]
 d$census <- 0:14
-colnames(d)[colnames(d)=='value'] <- 'DBH'
 
+### Melt and add the HT data...
+d2 <- data[,!(colnames(data) %in% paste('DIA',0:14,sep=''))] 
+d2 <- melt(d2, id.vars = c("uID","OLDSITE","SITE2","NUMBER",
+                         "YEAR_RECRUIT","TAG","SITE","QUAD",
+                         "SUBQUAD","TAG","SPECIES","NOTES",'AGE00'),value.name='HT')
+d2 <- d2[order(d2$uID),]
+d$HT <- d2$HT
+
+### FIX HT ERRORS (IDENTIFIED WITH ELBOW GREASE!)
+d$HT[d$uID %in% 'RAF1.784.13815' & d$census %in% '6'] <- 640
+d$HT[d$uID %in% 'RAF0.714.15758' & d$census %in% '11'] <- 1180
+d$HT[d$uID %in% 'PEPED2.47.12134' & d$census %in% '13'] <- 1600
+d$HT[d$uID %in% 'PED2.843.11828' & d$census %in% '13'] <- 1100
+d$HT[d$uID %in% 'HEC17.91.6451' & d$census %in% '10'] <- 1380
+d$HT[d$uID %in% 'HEC17.91.6451' & d$census %in% '11'] <- 1380
+d$HT[d$uID %in% 'HEC17.91.6451' & d$census %in% '12'] <- 1450
+d$HT[d$uID %in% 'HEC17.253.6725' & d$census %in% '12'] <- 2200
+d$HT[d$uID %in% 'HEC17.253.6725' & d$census %in% '13'] <- 2500
+d$HT[d$uID %in% 'HEC1.1864.8636' & d$census %in% '13'] <- 1500
+d$HT[d$uID %in% 'GUM3.613.5406' & d$census %in% '13'] <- 1600
+d$HT[d$uID %in% 'GUM25.268.3616' & d$census %in% '13'] <- 1400
+d$HT[d$uID %in% 'FER4.1570.4732' & d$census %in% '10'] <- 1750
+d$HT[d$uID %in% 'FER4.1570.4732' & d$census %in% '13'] <- 289
+d$HT[d$uID %in% 'PEGUM3.1.6265' & d$census %in% '10'] <- 900
+d$HT[d$uID %in% 'SAN8.346.17949' & data$census %in% '13'] <- 1115
+d$HT[d$uID %in% 'FER4.231.4429' & d$census %in% '10'] <- 1750
+d$HT[d$uID %in% 'FER4.1570.4732' & d$census %in% '10'] <- 230
+d$HT[d$uID %in% 'FER1.1097.3062' & d$census %in% '4'] <- 1030
+d$HT[d$uID %in% 'HEC1.1505.7989' & d$census %in% '8'] <- 1250
+d$HT[d$uID %in% 'HEC17.479.7007' & d$census %in% '10'] <- 1640
+d$HT[d$uID %in% 'HEC17.807.7047' & d$census %in% '3'] <- 270
+d$HT[d$uID %in% 'PED2.1139.12053' & d$census %in% '13'] <- 330
+d$HT[d$uID %in% 'RAF1.108.13136' & d$census %in% '9'] <- 1100
+
+
+### THESE ARE QUESTIONABLE BUT LOOKS LIKE BREAKAGE:
+#d[d$uID %in% 'SAN8.346.17949' & d$census %in% '11',]
+#d[d$uID %in% 'HEC1.1155.8818' & d$census %in% '13',]
+#d[d$uID %in% 'PED2.881' & d$census %in% 'PED2.8',]
+#d[d$uID %in% 'PEFER4.32.4770' & d$census %in% 'PEFER4.11',]
+
+### ADD IN CENSUS INFO
 census <- read.csv('site.censuses.csv')
 censuses <- as.character(census$SITE.CENSUS[census$TAKEN=="TRUE"])
 census$year <- substring(as.character(as.Date(as.character(census$DATE), format='%m/%d/%y')),1,4)
@@ -58,6 +98,7 @@ census$DATE <- as.Date(census$DATE, format='%m/%d/%y')
 d$DATE <- census$DATE[match(d$SITE.CENSUS, as.character(census$SITE.CENSUS))]
 
 d$growth <- NA
+d$ht.growth <- NA
 d$YEAR_RECRUIT2 <- NA
 d$survive <- NA
 d$year <- 2000:2014
@@ -71,20 +112,31 @@ d <- d[!d$uID %in% me$uID,]
 
 d <- d[order(d$census, d$uID),]
 g <- vector()
+htg <- vector()
 s <- vector()
 int <- vector()
 for(census in 0:14){
 	c1 <- d[d$census == census,]
 	c2 <- d[d$census == (census+1),]
 	g <- c(g, c2$DBH - c1$DBH)
-	if(census == 14){g <- c(g, rep(NA, times=nrow(c1)))}
+	htg <- c(htg, c2$HT - c1$HT)
+  if(census == 14){
+    g <- c(g, rep(NA, times=nrow(c1)))
+    htg <- c(htg, rep(NA, times=nrow(c1)))
+  }
 	s <- c(s, ifelse(c1$status=='alive' & c2$status=='alive', 1, 
 					ifelse(c1$status=='alive' & c2$status=='dead', 0, NA)))
-	if(census == 14){s <- c(s, rep(NA, times=nrow(c1)))}
+	if(census == 14){
+    s <- c(s, rep(NA, times=nrow(c1)))
+	}
 	int <- c(int, c2$DATE - c1$DATE)
-	if(census == 14){int <- c(int, rep(NA, times=nrow(c1)))}
+	if(census == 14){
+    int <- c(int, rep(NA, times=nrow(c1)))
+	}
 }
+
 d$growth <- g
+d$ht.growth <- htg
 d$survive <- s
 d$int <- int
 d <- d[order(d$uID),]
@@ -202,11 +254,11 @@ wood <- read.csv("wood_traits_4.27.15.csv")
 tdata$WDMC <- wood$WDMC[match(tdata$species, wood$species)]
 data <- cbind(data, tdata[match(data$SPECIES, tdata$species),])
 
-par(mfrow=c(4,4), mar=c(2,2,2,2))
-for(t in 2:16) {hist(tdata[,t], main=names(tdata)[t])}
-quartz()
-par(mfrow=c(4,4), mar=c(2,2,2,2))
-for(t in 2:16) {hist(log(tdata[,t]), main=names(tdata)[t])}
+#par(mfrow=c(4,4), mar=c(2,2,2,2))
+#for(t in 2:16) {hist(tdata[,t], main=names(tdata)[t])}
+#quartz()
+#par(mfrow=c(4,4), mar=c(2,2,2,2))
+#for(t in 2:16) {hist(log(tdata[,t]), main=names(tdata)[t])}
 
 data$log.LA <- log(data$LA)
 data$log.SLA <- log(data$SLA)
@@ -220,16 +272,12 @@ data$log.N <- log(data$N)
 
 #save(data, file="Chajul_data_processed_wtraits_11.20.15.RDA")
 #save(data, file="Chajul_data_processed_wtraits_4.27.15.RDA")
-load("Chajul_data_processed_wtraits_11.20.15.RDA")
-load("Chajul_census_processed_8.25.15.RDA")
-
 
 ### ADD CHAVE WD AND GENUS-LEVEL AVERAGE WD DATA... 
 setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
 load("Chajul_data_processed_wtraits_11.20.15.RDA")
 load("Chajul_census_processed_8.25.15.RDA")
 tdata <- read.csv('Mean_traits_4.27.15.csv')
-
 
 nowd <- sort(as.character(unique(data$SPECIES[is.na(data$WD)])))
 chave <- read.csv('ChaveWoodDensity.csv')
@@ -245,10 +293,19 @@ data$genus <- unlist(lapply(strsplit(as.character(data$SPECIES), " "), function(
 newwd <- genus.wd[match(data$genus, names(genus.wd))]
 data$all.WD <- ifelse(!is.na(data$all.WD), data$all.WD, newwd)
 
+# PROBABLY SOME MORE HEIGHT ERRORS TO CLEAN BUT GOOD FOR NOW...
+range(data$ht.growth,na.rm=T)
+hist(data$ht.growth, breaks=1000)
+checks <- data$uID[!is.na(data$ht.growth) & data$ht.growth<(-500)]
+checks <- c(checks, data$uID[!is.na(data$ht.growth) & data$ht.growth>(500)])
+unique(checks)
+
+### CALCULATE AGB BASED ON CHAVE 2014 AND FULL WD DATA
+data$agb <- 0.0673 * ((data$all.WD * data$DBH^2 * data$HT/100)^0.976) 
+  
 #save(data, file="Chajul_data_processed_wtraits_11.20.15.RDA")
 load("Chajul_data_processed_wtraits_11.20.15.RDA")
 load("Chajul_census_processed_8.25.15.RDA")
-
 
 
 ###########################
