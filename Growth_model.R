@@ -27,10 +27,8 @@ data$quadBA <- quadBA[match(paste(data$SITE.CENSUS, data$QUAD), names(quadBA))]
 
 
 #plot(log(data$quadBA[data$quadBA!=0]+1), jitter(data$age[data$quadBA!=0]))
-
 cor(log(data$quadBA+1), data$growth, use='p')
 cor(data$age, data$growth, use='p')
-
 
 
 ### FUNCTION TO CONVERT DBH TO BA
@@ -80,7 +78,21 @@ focal.trait <- 'log.SLA'
 data <- data[!is.na(data[,focal.trait]),]
 data <- droplevels(data)
 
-data <- data[order(data$uID, data$SPECIES, data$SITE.CENSUS),]
+data <- data[order(data$SPECIES, data$uID),]
+
+### SCALE AND CENTER DATA
+
+### Z-TRANSFORM DATA
+z.score <- function (data) {
+  xm<- mean (data, na.rm=TRUE)
+  xsd<-sd(data, na.rm=TRUE)
+  xtrans<-(data-xm)/(2*xsd)	
+}
+
+data$growth.z <- as.vector(scale(data$growth, center=F))
+data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
+data$age.z <- as.vector(scale(age[match(data$SITE.CENSUS, census$SITE.CENSUS)]))
+data$log.quadba.z <- unlist(tapply(log(data$quadBA), data$species, z.score))
 
 ### MAKE INPUT DATA
 d <- list(
@@ -88,15 +100,16 @@ d <- list(
     nindiv = length(unique(data$uID)),
     nspecies = length(unique(data$SPECIES)),
     nplot = length(unique(data$SITE2)),
-    trait = as.vector(scale(tapply(data[,focal.trait], data$SPECIES, mean))),
+    trait = as.vector(scale(tapply(1/data[,focal.trait], data$SPECIES, mean))), # convert to LMA
     species = as.numeric(data$SPECIES),
     indiv = as.numeric(as.factor(data$uID)),
-    growth = as.vector(scale(data$growth, center=F)),
-    dbh = as.vector(scale(log(data$DBH))),
-#    age = as.vector(scale(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])),
-    quadba = as.vector(scale(log(data$quadBA))),
-    plot = as.numeric(data$SITE2)
-  )
+    growth = data$growth.z,
+    dbh = data$log.dbh.z,
+    age = data$age.z,
+    quadba = data$log.quadba.z,
+    plot = as.numeric(data$SITE),
+    census = as.numeric(as.factor(data$SITE.CENSUS))
+)
 
 
 ##############################
@@ -161,6 +174,7 @@ library(MuMIn)
 library(arm)
 
 growth <- d$growth
+indiv <- d$indiv
 trait <- d$trait[d$species]
 species <- d$species
 age <- d$age
@@ -169,31 +183,73 @@ plot <- d$plot
 cen <- d$census
 quadba <- d$quadba
 
+m1 <- lmer(growth ~ quadba + trait + quadba*trait + dbh + (1|plot) + (1|indiv))
+m2 <- lmer(growth ~ age + trait + age*trait + dbh + (1|plot) + (1|indiv) + (1|species))
 
-m1 <- lm(growth ~ quadba + trait + quadba*trait + dbh)
-m2 <- lmer(growth ~ quadba + trait + quadba*trait + dbh + (1|plot))
-m3 <- lmer(growth ~ age + trait + age*trait + dbh + (1|cen))
 
 summary(m1)
 summary(m2)
-summary(m3)
+
+r.squaredGLMM(m1)
+r.squaredGLMM(m2)
+
+AIC(m1)
+AIC(m2)
 
 mod <- m2
+est <- apply(fixef(sim(mod, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
 
-summary(mod)
-
-est <- apply(fixef(sim(m2, n.sims=1000)), 2, quantile, probs=c(0.025, 0.5, 0.975))
-
-r.squaredGLMM(mod)
-
+est <- est[,-1]
 pch <- ifelse(sign(est[1,])==sign(est[3,]), 16, 1)
-par(mar=c(4,10,4,6))
-plot(est[2,], ncol(est):1, xlim=c(min(est), max(est)), pch=pch, axes=F, cex=2, ylab='', xlab='Standard Effect')
-segments(est[1,], ncol(est):1, est[3,], lwd=3, col=2)
+#par(mar=c(4,10,4,6))
+pdf(file='lma.coeff.pdf')
+par(mar=c(20,15,4,5))
+plot(est[2,], ncol(est):1, xlim=c(ifelse(min(est)>0,-.1,min(est)), ifelse(max(est)<0,.1,max(est))), pch=pch, axes=F, ylab='', xlab='Standard Effect')
+#plot(est[2,], ncol(est):1, xlim=c(min(est), max(est)), pch=pch, axes=F, ylab='', xlab='Standard Effect')
+segments(est[1,], ncol(est):1, est[3,], lwd=3)
 abline(v=0, lty=2)
 axis(2, labels=colnames(est), at=ncol(est):1, las=2)
 axis(1)
 box()
+dev.off()
+
+
+# PLOT INTERACTION PREDICTION
+newage <- seq(min(age),max(age),length.out=50)
+newdata.hightrait <- data.frame(age=newage, 
+                                trait=rep(max(trait), length(newage)), 
+                                dbh=rep(0,length(newage)), 
+                                plot=factor(rep(1,length(newage))),
+                                cen=factor(rep(1,length(newage))),
+                                species=factor(rep(1,length(newage))),
+                                indiv=factor(rep(1,length(newage))))
+newdata.lowtrait <- data.frame(age=newage, 
+                               trait=rep(min(trait), length(newage)), 
+                               dbh=rep(0,length(newage)), 
+                               plot=factor(rep(0,length(newage))),
+                               cen=factor(rep(1,length(newage))),
+                               species=factor(rep(1,length(newage))),
+                               indiv=factor(rep(1,length(newage))))
+y.pred.hightrait <- predict(mod, newdata.hightrait, allow.new.levels=T)
+y.pred.lowtrait <- predict(mod, newdata.lowtrait, allow.new.levels=T)
+#plot(data$age, predict(mod), pch=16, col=rgb(0,0,0,.5))
+
+pdf(file='lma_interaction.pdf')
+par(mar=c(6,6,4,4))
+ylim <- range(y.pred.lowtrait, y.pred.hightrait)
+plot(newage, y.pred.hightrait, type='l', lwd=4, 
+     ylab='', xlab='Forest Age (years)', axes=F, cex.lab=1.5, ylim=ylim)
+labs <- seq(0,35,by=5)
+axis(1, labels=labs, at=(labs - mean(data$age)) / sd(data$age), cex.axis=1.25)
+labs2 <- seq(-2,2, by=0.5)
+rms <- sqrt(sum(data$growth^2)/(length(data$growth)-1)) # TO BACK TRANSFORM GROWTH PREDICTIONS TO CM / YEAR
+axis(2, labels=labs2, at=(labs2 / rms), las=2, cex.axis=1.25)
+points(newage, y.pred.lowtrait, type='l', col=2, lwd=4)
+legend('topright',legend=c('High LMA', 'Low LMA'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
+abline(h=0,lty=3)
+mtext(bquote('Predicted Growth Rate ( mm/yr'^1~')'), 2, 3.5, cex=1.5)
+dev.off()
+
 
 
 

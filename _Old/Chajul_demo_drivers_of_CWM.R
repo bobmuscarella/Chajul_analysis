@@ -4,8 +4,8 @@ library(FD)
 ###################
 #### LOAD DATA ####
 ###################
-setwd("/Users/Bob/Projects/Neoselvas/Chajul/DATA")
-load("Chajul_data_processed_wtraits_4.27.15.RDA")
+setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
+load("Chajul_data_processed_wtraits_11.20.15.RDA")
 load("Chajul_census_processed_8.25.15.RDA")
 totalBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
 data$totalBA <- totalBA[match(data$SITE.CENSUS, names(totalBA))]
@@ -38,6 +38,83 @@ DemographicCWM <- function(ba0, trait, ba.g, ba.r, ba.m){
 	names(out) <- c('cwm0', 'cwm1', 'cwm.g', 'cwm.r', 'cwm.m', 't0', 'Growth', 'Recruitment', 'Mortality')
 	return(out)
 }
+
+
+x <- x[rowSums(x[,-1])>0,]
+
+sum((x$trait * x$ba0) + (x$trait * x$ba.g) + (x$trait*x$ba.r) - (x$trait*x$ba.m)) / sum(x$ba0 + x$ba.g + x$ba.r - x$ba.m)
+
+sum((x$trait * x$ba0)) / sum(x$ba0 + x$ba.g + x$ba.r - x$ba.m)
+sum((x$trait * x$ba.g)) / sum(x$ba0 + x$ba.g + x$ba.r - x$ba.m)
+sum((x$trait * x$ba.r)) / sum(x$ba0 + x$ba.g + x$ba.r - x$ba.m)
+sum((x$trait * x$ba.m)) / sum(x$ba0 + x$ba.g + x$ba.r - x$ba.m)
+
+
+cwm0
+cwm1
+cwm.flux
+
+cwm.flux <- sum(x$ba0*x$trait) + sum(x$ba.g*x$trait) + sum(x$ba.r*x$trait) + sum(x$ba.m*x$trait)
+
+sum(x$ba0*x$trait) / cwm.flux
+
+
+cba0 <- sum(x$ba0)/ba.flux
+cbag <- sum(x$ba.g)/ba.flux
+cbar <- sum(x$ba.r)/ba.flux
+cbam <- sum(x$ba.m)/ba.flux
+cba0+cbag+cbar+cbam 
+
+sum(sum(x$ba0)*cwm0 + sum(x$ba.g)*cwm.g + sum(x$ba.r)*cwm.r - sum(x$ba.m)*cwm.m)/sum(x$ba1)
+
+ba.flux <- sum(x$ba.g + x$ba.r + x$ba.m)
+#cba0 <- sum(x$ba0)/ba.flux
+cbag <- sum(x$ba.g)/ba.flux
+cbar <- sum(x$ba.r)/ba.flux
+cbam <- sum(x$ba.m)/ba.flux
+
+cba0+cbag+cbar+cbam
+
+sum(cba0*cwm0 + cbag*cwm.g + cbar*cwm.r + cbam*cwm.m)
+
+(sum(cbag*cwm.g + cbar*cwm.r - cbam*cwm.m) * ba.flux) + (cwm0 * sum(ba0)) / (ba.flux+sum(ba0))
+
+sum(ba0 + ba.flux)
+
+cbag*
+
+cwm1 - cwm0
+
+
+ba.flux <- sum(x$ba.g + x$ba.r + x$ba.m)
+
+cwm.flux <- cbag*(sum(x$ba.g * x$trait)/sum(x$ba.g)) + cbar*(sum(x$ba.r * x$trait)/sum(x$ba.r)) + cbam*(sum(x$ba.m * x$trait)/sum(x$ba.m))
+
+bacontrib.dyn <- ba.flux / (ba.flux + sum(x$ba0))
+bacontrib0 <- sum(x$ba0) / (ba.flux + sum(x$ba0))
+
+((bacontrib0 * cwm0) + (bacontrib.dyn * cwm.flux))
+
+
+
+
+
+
+
+cwm0
+cwm1
+cwm1-cwm0
+
+
+ba1 <- ba0 + ba.g + ba.r - ba.m
+x <- as.data.frame(cbind(trait, ba0, ba.g, ba.r, ba.m, ba1))
+x <- x[!is.nan(x$trait),]
+cwm0 <- sum(x$ba0 * x$trait) / sum(x$ba0)
+cwm1 <- sum(x$ba1 * x$trait) / sum(x$ba1)
+
+
+
+
 
 
 PlotDemographicCWM <- function(ba0, trait, ba.g, ba.r, ba.m){
@@ -200,20 +277,59 @@ names(out) <- c('SITE.CENSUS', names(DemographicCWM(x$ba0, x$trait, x$ba.g, x$ba
 #############################
 #### SIMULATION SANDBOX ####
 #############################
-nsp <- 30
-ba0=rep(1, nsp)
-# trait=abs(rnorm(nsp))  # for single trait analysis
-trait=cbind(abs(rnorm(nsp)), abs(rnorm(nsp)), abs(rnorm(nsp)), abs(rnorm(nsp))) # for multivariate analyses
-ba.g=abs(rnorm(nsp))
-ba.r=abs(rnorm(nsp))
-ba.m=runif(nsp, 0, 9)
+nsp <- 10
+ba0 <- sample(1:100, nsp)
+trait=abs(rnorm(nsp))  # for single trait analysis
+#trait=cbind(abs(rnorm(nsp)), abs(rnorm(nsp)), abs(rnorm(nsp)), abs(rnorm(nsp))) # for multivariate analyses
+ba.g=sample(1:100, nsp)
+ba.r=sample(1:100, nsp)
+for(i in 1:nsp) ba.m[i] <- sample(1:ba0[i], 1)
 
-ba.g[sample(1:nsp, runif(nsp, 1, nsp/2))] <- 0
-ba.r[sample(1:nsp, runif(nsp, 1, nsp/2))] <- 0
-ba.m[sample(1:nsp, runif(nsp, 1, nsp))] <- 0
+ba.g
+ba.r
+ba.m
+
+cwm0 <- sum(ba0 * trait) / sum(ba0)
+cwm.g <- sum(ba.g * trait) / sum(ba.g)
+cwm.r <- sum(ba.r * trait) / sum(ba.r)
+cwm.m <- sum(ba.m * trait) / sum(ba.m)
+
+ba1 <- ba0 + ba.g + ba.r - ba.m
+cwm1 <- sum(ba1 * trait) / sum(ba1)
+
+
+cumflux <- cwm0*sum(ba0) + cwm.g*sum(ba.g) + cwm.r*sum(ba.r) + cwm.m*sum(ba.m)
+
+
+cwm0*sum(ba0) / cumflux
+cwm.g*sum(ba.g) / cumflux
+cwm.r*sum(ba.r) / cumflux
+cwm.m*sum(ba.m) / cumflux
+
+
+cbind(trait, ba0, ba.g, ba.r, ba.m)
+
+cwm0
+cwm.g
+cwm.r
+cwm.m
+cwm1
+
+
+c(88/(88+83+1+48), 83/(88+83+1+48), 1/(88+83+1+48), 48/(88+83+1+48))
 
 
 
+cumflux2 <- cwm.g*sum(ba.g) + cwm.r*sum(ba.r) + cwm.m*sum(ba.m)
+cwm.g*sum(ba.g) / cumflux2
+cwm.r*sum(ba.r) / cumflux2
+cwm.m*sum(ba.m) / cumflux2
+
+
+(cwm0*sum(ba0) + cwm.g*sum(ba.g) + cwm.r*sum(ba.r) - cwm.m*sum(ba.m)) / (sum(ba0)+sum(ba.g)+sum(ba.r)-sum(ba.m))
+
+cwm1
+cwm0
 
 
 PlotDemographicCWM(ba0, trait, ba.g, ba.r, ba.m)
