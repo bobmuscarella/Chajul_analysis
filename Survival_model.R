@@ -2,7 +2,7 @@
 ### HIERARCICHAL MODEL OF TRAIT-MEDIATED SURVIVAL DURING SUCCESSION ###
 #######################################################################
 library(jagsUI)
-library(FD)
+library(lme4)
 
 ###################
 #### LOAD DATA ####
@@ -43,10 +43,9 @@ data <- droplevels(data)
 
 ##############################
 ### SUBSET DATA FOR TESTING...
-focsp <- sort(unique(data$species))[as.logical(rowSums((table(data$species, data$survive)==0) > 0))]
-data <- data[data$species %in% focsp,]
-
-data <- data[sample(1:nrow(data), 500),]
+# focsp <- sort(unique(data$species))[as.logical(rowSums((table(data$species, data$survive)==0) > 0))]
+# data <- data[data$species %in% focsp,]
+# data <- data[sample(1:nrow(data), 500),]
 ##############################
 
 ### GET PLOT AGES

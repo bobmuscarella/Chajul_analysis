@@ -2,7 +2,9 @@
 ### HIERARCICHAL MODEL OF TRAIT-MEDIATED GROWTH DURING SUCCESSION ###
 #####################################################################
 library(jagsUI)
-library(FD)
+library(lme4)
+library(MuMIn)
+library(arm)
 
 ###################
 #### LOAD DATA ####
@@ -18,41 +20,38 @@ data$relBA <- data$ba/data$totalBA
 census$totalBA <- totalBA[match(census$SITE.CENSUS, names(totalBA))]
 tdata <- read.csv('Mean_traits_4.27.15.csv')
 
-head(data)
-
-age <- census$ages + census$CENSUS
-data$age <- as.vector(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])
-quadBA <- tapply(data$ba, paste(data$SITE.CENSUS, data$QUAD), sum, na.rm=T)
-data$quadBA <- quadBA[match(paste(data$SITE.CENSUS, data$QUAD), names(quadBA))]
-
-
-#plot(log(data$quadBA[data$quadBA!=0]+1), jitter(data$age[data$quadBA!=0]))
-cor(log(data$quadBA+1), data$growth, use='p')
-cor(data$age, data$growth, use='p')
-
-
 ### FUNCTION TO CONVERT DBH TO BA
 dbh2ba <- function(dbh){
   return(((pi / 40000) * (dbh^2)))
 }
 
-data <- data[!is.na(data$DBH),]
-data <- data[!is.na(data$growth),]
-data <- droplevels(data)
-
+### FUNCTION TO Z-TRANSFORM DATA
+z.score <- function (data, center=T) {
+  xm <- ifelse(center==T, mean (data, na.rm=TRUE), 0)
+  xsd <- sd(data, na.rm=TRUE)
+  xtrans <- (data - xm) / (2 * xsd) 
+  return(xtrans)
+}
 
 ###################
 #### PREP DATA ####
 ###################
+age <- census$ages + census$CENSUS
+data$age <- as.vector(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])
+quadBA <- tapply(data$ba, paste(data$SITE.CENSUS, data$QUAD), sum, na.rm=T)
+data$quadBA <- quadBA[match(paste(data$SITE.CENSUS, data$QUAD), names(quadBA))]
+data <- data[!is.na(data$DBH),]
+data <- data[!is.na(data$growth),]
+data <- droplevels(data)
 
 ### CHECK FOR GROWTH OUTLIERS...
-outliers <- vector()
-for(i in -30:30){
-  outliers[i] <- length(data$uID[!is.na(data$growth) & data$growth > i])
-}
+#outliers <- vector()
+#for(i in -30:30){
+#  outliers[i] <- length(data$uID[!is.na(data$growth) & data$growth > i])
+#}
 #data <- data[!is.na(data$growth) & data$growth < 8,]
 
-### BCI METHOD
+### BCI METHOD TO EXCLUDE STEMS...
 Growth.Include <- (((data$growth*10) > 4 * (-(0.0062 * data$DBH + 0.904))) & ((data$growth*10) < 75))
 data <- data[Growth.Include==T,]
 data <- droplevels(data)
@@ -66,33 +65,28 @@ data <- droplevels(data)
 
 ####################################
 #### SUBSET DATA FOR TESTING... ####
-#data <- data[sample(1:nrow(data), 2000),]
-
+# data <- data[sample(1:nrow(data), 2000),]
 ####################################
-
-### GET PLOT AGES
-age <- census$ages + census$CENSUS
 
 ### SELECT A TRAIT
 focal.trait <- 'log.SLA'
 data <- data[!is.na(data[,focal.trait]),]
 data <- droplevels(data)
-
 data <- data[order(data$SPECIES, data$uID),]
 
-### SCALE AND CENTER DATA
+### SCALE (+center) DATA, OVERALL DATA!
+data$growth.z <- z.score(data$growth, center=F)
+data$age.z <- z.score(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])
+data$log.quadba.z <- z.score(log(data$quadBA))
+data$log.dbh.z <- z.score(log(data$DBH))
 
-### Z-TRANSFORM DATA
-z.score <- function (data) {
-  xm<- mean (data, na.rm=TRUE)
-  xsd<-sd(data, na.rm=TRUE)
-  xtrans<-(data-xm)/(2*xsd)	
+### SCALE AND CENTER DATA, WITHIN SPECIES!
+# data$log.quadba.z <- unlist(tapply(log(data$quadBA), data$species, z.score))
+# data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
+
+if(focal.trait=='log.SLA'){  ### Convert SLA to LMA
+trait.z <- as.vector(z.score(tapply(1/data[,focal.trait], data$SPECIES, mean))) 
 }
-
-data$growth.z <- as.vector(scale(data$growth, center=F))
-data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
-data$age.z <- as.vector(scale(age[match(data$SITE.CENSUS, census$SITE.CENSUS)]))
-data$log.quadba.z <- unlist(tapply(log(data$quadBA), data$species, z.score))
 
 ### MAKE INPUT DATA
 d <- list(
@@ -100,7 +94,7 @@ d <- list(
     nindiv = length(unique(data$uID)),
     nspecies = length(unique(data$SPECIES)),
     nplot = length(unique(data$SITE2)),
-    trait = as.vector(scale(tapply(1/data[,focal.trait], data$SPECIES, mean))), # convert to LMA
+    trait = trait.z,
     species = as.numeric(data$SPECIES),
     indiv = as.numeric(as.factor(data$uID)),
     growth = data$growth.z,
@@ -112,67 +106,9 @@ d <- list(
 )
 
 
-##############################
-#### Write the model file ####
-##############################
-sink("Growth_Age_x_Trait.bug")
-
-cat(" model {
-    
-    for( i in 1:ntree ) {
-
-      growth[i] ~ dnorm(mu[i], tau[1])
-
-      mu[i] <- exp(z[i])    
-
-      z[i] <- beta.1[species[i]]
-              + beta.2[species[i]] * (quadba[i])
-              + beta.3[species[i]] * (dbh[i])
-              + indiv.effect[indiv[i]]
-              + plot.effect[plot[i]]
-    }
-    
-    for( j in 1:nspecies ) {
-      beta.1[j] ~ dnorm(mu.beta[1] + beta.t[1] * trait[j], tau[2])  # Avg Growth
-      beta.2[j] ~ dnorm(mu.beta[2] + beta.t[2] * trait[j], tau[3])  # Trait Effect
-      beta.3[j] ~ dnorm(mu.beta[3], tau[4])                         # DBH Effect
-    }
-
-    for( i.a in 1:nindiv ) {
-      indiv.effect[i.a] ~ dnorm(0, tau[5])
-    }
-    
-    for( p.a in 1:nplot ) {
-      plot.effect[p.a] ~ dnorm(0, tau[6])
-    }
-
-    beta.t[1] ~ dnorm(0, 1E-4)
-    beta.t[2] ~ dnorm(0, 1E-4)
-    
-    for( m in 1:3 ) {
-      mu.beta[m] ~ dnorm(0, 1E-4)
-    }
-    
-    for( t in 1:6 ) {
-      tau[t] ~ dgamma(1E3, 1E3)
-    }
-    
-    sigma <- 1 / sqrt(tau)
-}",
-fill=TRUE)
-sink()
-
-
-
 ################################################
-### Set initial values, monitors, iterations and run model ###
+##################### LMER #####################
 ################################################
-
-#### TRY WITH A MIXED MODEL FIRST...
-library(lme4)
-library(MuMIn)
-library(arm)
-
 growth <- d$growth
 indiv <- d$indiv
 trait <- d$trait[d$species]
@@ -183,26 +119,20 @@ plot <- d$plot
 cen <- d$census
 quadba <- d$quadba
 
-m1 <- lmer(growth ~ quadba + trait + quadba*trait + dbh + (1|plot) + (1|indiv))
-m2 <- lmer(growth ~ age + trait + age*trait + dbh + (1|plot) + (1|indiv) + (1|species))
-
-
-summary(m1)
-summary(m2)
+m1 <- lmer(growth ~ age + trait + age*trait + dbh + (1|plot) + (1|species) + (1|indiv))
+m2 <- lmer(growth ~ age + trait + age*trait + dbh + (1|age:plot) + (1|age:species) + (1|indiv))
 
 r.squaredGLMM(m1)
 r.squaredGLMM(m2)
 
-AIC(m1)
-AIC(m2)
-
 mod <- m2
+
 est <- apply(fixef(sim(mod, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
 
 est <- est[,-1]
 pch <- ifelse(sign(est[1,])==sign(est[3,]), 16, 1)
 #par(mar=c(4,10,4,6))
-pdf(file='lma.coeff.pdf')
+#pdf(file='lma.coeff.pdf')
 par(mar=c(20,15,4,5))
 plot(est[2,], ncol(est):1, xlim=c(ifelse(min(est)>0,-.1,min(est)), ifelse(max(est)<0,.1,max(est))), pch=pch, axes=F, ylab='', xlab='Standard Effect')
 #plot(est[2,], ncol(est):1, xlim=c(min(est), max(est)), pch=pch, axes=F, ylab='', xlab='Standard Effect')
@@ -253,12 +183,72 @@ dev.off()
 
 
 
-############
+#/////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\\
+####################################################
+##################### BAYESIAN #####################
+####################################################
 
-# Set initial values
+
+##############################
+#### Write the model file ####
+##############################
+sink("Growth_Age_x_Trait.bug")
+
+cat(" model {
+    
+    for( i in 1:ntree ) {
+    
+    growth[i] ~ dnorm(mu[i], tau[1])
+    
+    mu[i] <- exp(z[i])    
+    
+    z[i] <- beta.1[species[i]]
+    + beta.2[species[i]] * (age[i])
+    + beta.3[species[i]] * (dbh[i])
+    + indiv.effect[indiv[i]]
+    + plot.effect[plot[i]]
+    }
+    
+    for( j in 1:nspecies ) {
+    beta.1[j] ~ dnorm(mu.beta[1] + beta.t[1] * trait[j], tau[2])  # Avg Growth
+    beta.2[j] ~ dnorm(mu.beta[2] + beta.t[2] * trait[j], tau[3])  # Trait Effect
+    beta.3[j] ~ dnorm(mu.beta[3] + beta.t[3] * trait[j], tau[4])  # DBH Effect
+    }
+    
+    for( i.a in 1:nindiv ) {
+     indiv.effect[i.a] ~ dnorm(0, tau[5])
+    }
+    
+    for( p.a in 1:nplot ) {
+      plot.effect[p.a] ~ dnorm(0, tau[6])
+    }
+    
+    for( b in 1:3 ) {
+      beta.t[b] ~ dnorm(0, 1E-4)
+    }
+
+    for( m in 1:3 ) {
+      mu.beta[m] ~ dnorm(0, 1E-4)
+    }
+    
+    for( t in 1:6 ) {
+    tau[t] ~ dgamma(1E3, 1E3)
+    }
+    
+    sigma <- 1 / sqrt(tau)
+    }",
+fill=TRUE)
+sink()
+
+
+
+################################################
+### Set initial values, monitors, iterations and run model ###
+################################################
+
 inits <- function (){
   list(
-    beta.t = rnorm(2),
+    beta.t = rnorm(3),
     mu.beta = rnorm(3),
     tau = rgamma(6, 1E3, 1E3)
   )
