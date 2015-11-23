@@ -1,15 +1,15 @@
 ###########################################################
 #### CALCULATE DEMOGRAPHICALLY-PARTITIONED FD, CWM, BA ####
 ###########################################################
-
 library(RColorBrewer)
 library(FD)
 
 ###################
 #### LOAD DATA ####
 ###################
-setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/Neoselvas/Chajul/DATA")
-load("Chajul_data_processed_wtraits_4.27.15.RDA")
+setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
+load("Chajul_data_processed_wtraits_11.20.15.RDA")
+#load("Chajul_data_processed_wtraits_4.27.15.RDA")
 load("Chajul_census_processed_8.25.15.RDA")
 totalBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
 data$totalBA <- totalBA[match(data$SITE.CENSUS, names(totalBA))]
@@ -18,14 +18,6 @@ census$totalBA <- totalBA[match(census$SITE.CENSUS, names(totalBA))]
 tdata <- read.csv('Mean_traits_4.27.15.csv')
 head(data)
 head(census)
-
-### CHECK FOR OUTLIERS...
-outliers <- vector()
-for(i in -30:30){
-  outliers[i] <- length(data$uID[!is.na(data$growth) & data$growth > i])
-}
-plot(outliers, type='l', ylim=c(0,30))
-# data <- data[!is.na(data$growth) & data$growth < 8,]
 
 ### FUNCTION TO CONVERT DBH TO BA
 dbh2ba <- function(dbh){
@@ -85,8 +77,11 @@ tdata$log.SLA <- log(tdata[,'SLA'])
 tdata$log.sFtP <- log(tdata[,'sFtP'])
 tdata$log.SV <- log(tdata[,'SV'])
 tdata$log.P <- log(tdata[,'P'])
+tdata$log.LMA <- log(1/tdata[,'SLA'])
 
-focaltraits <- which(names(tdata) %in% c('log.SLA','log.sFtP','WD','log.SV','log.P','QY'))
+
+#focaltraits <- which(names(tdata) %in% c('log.SLA','log.sFtP','WD','log.SV','log.P','QY'))
+focaltraits <- which(names(tdata) %in% c('WD','log.LMA'))
 
 for (t in 1:length(focaltraits)){
   trait <- names(tdata)[focaltraits[t]]
@@ -135,7 +130,7 @@ for (t in 1:length(focaltraits)){
       d <- dist(tmp)
   		omits <- which(colSums(x) == 0)
   	  x[,omits] <- 1
-### NEED TO SET NEGATIVE GROWTH TO 0 TO AVOID ERRORS...
+### NEED TO SET NEGATIVE GROWTH TO 0 TO AVOID ERRORS (THIS NEEDS TO BE FIXED...)...
       x[x<0] <- 0
   	  tmpres <- dbFD(d, t(x[,-1]), messages=F)
       tmpres$RaoQ[omits] <- tmpres$FDis[omits] <- tmpres$FEve[omits] <- tmpres$FRic[omits] <- NA
@@ -155,8 +150,8 @@ for (t in 1:length(focaltraits)){
   }
 }
 
-# save(res, file="demo_partioning_of_FD.RDA")
-load("demo_partioning_of_FD.RDA")
+# save(res, file="demo_partioning_of_FD_WD_LMA.RDA")
+load("demo_partioning_of_FD_WD_LMA.RDA")
 str(res)
 
 
@@ -193,55 +188,56 @@ plot_t <- function(metric='cwm', pool='ba0', trait='SLA', col=NULL, ylab='trait'
 
 
 
-par(mfrow=c(3,3), mar=c(4,4,2,2), oma=c(4,4,0,0))
+
+pdf(file='cwm_ba0.pdf')
+
+par(mfrow=c(2,2), mar=c(4,4,1,1), oma=c(0,0,0,0))
 
 library(lme4)
 library(MuMIn)
 
 for(trt in 1:length(res)){
-p <- 'ba0'
-t <- names(res)[trt]
-m <- 'cwm'
-vals <- res[[t]][[m]][,p]
-sites <- rownames(res[[t]][[m]])
-x <- vals[match(as.character(census$SITE.CENSUS), sites)]  
-censusyr <- census$ages + census$CENSUS
-x <- cbind(x, censusyr, census$SITE)
-x <- x[!is.na(rowSums(x)),]
-rownames(x) <- NULL
-colnames(x) <- c('y','age','site')
-x <- as.data.frame(x)
-x$age2 <- x$age^2
-
-lmod <- lmer(y ~ age + (1 + age|site), data=x)
-qmod <- lmer(y ~ age + age2 + (1 + age|site), data=x)
-mod <- list(lmod, qmod)[[ifelse(AIC(qmod)+2 < AIC(lmod), 2, 1)]]
-
-plot_t(ylab=paste(t, m, p), pool=p, trait=t, metric=m, census=census, col=rgb(0,0,0,1))
-
-if(AIC(qmod)+2 < AIC(lmod)){
-  for(i in 1:nrow(coef(qmod)$site)){
+  col <- rgb(0,0,0,1)
+  p <- 'ba0'
+  t <- names(res)[trt]
+  m <- 'cwm'
+  vals <- res[[t]][[m]][,p]
+  sites <- rownames(res[[t]][[m]])
+  x <- vals[match(as.character(census$SITE.CENSUS), sites)]  
+  censusyr <- census$ages + census$CENSUS
+  x <- cbind(x, censusyr, census$SITE)
+  x <- x[!is.na(rowSums(x)),]
+  rownames(x) <- NULL
+  colnames(x) <- c('y','age','site')
+  x <- as.data.frame(x)
+  x$age2 <- x$age^2
+  lmod <- lmer(y ~ age + (1 + age|site), data=x)
+  qmod <- lmer(y ~ age + age2 + (1 + age|site), data=x)
+  mod <- list(lmod, qmod)[[ifelse(AIC(qmod)+2 < AIC(lmod), 2, 1)]]
+  plot_t(ylab=paste(t, m, p), pool=p, trait=t, metric=m, census=census, col=col)
+  if(AIC(qmod)+2 < AIC(lmod)){
+    for(i in 1:nrow(coef(qmod)$site)){
+      nd <- data.frame(age=(-1:35), age2=((-1:35)^2), site=rep(1,length((-1:35))))
+      y <- coef(qmod)$site[i,1] + (nd$age * coef(qmod)$site[i,2]) + (nd$age2 * coef(qmod)$site[i,3])
+      #points(nd$age, y, type='l', col=rgb(1,0,0,0.5))
+    }
     nd <- data.frame(age=(-1:35), age2=((-1:35)^2), site=rep(1,length((-1:35))))
-    y <- coef(qmod)$site[i,1] + (nd$age * coef(qmod)$site[i,2]) + (nd$age2 * coef(qmod)$site[i,3])
-    points(nd$age, y, type='l', col=rgb(1,0,0,0.5))
-  }
-  nd <- data.frame(age=(-1:35), age2=((-1:35)^2), site=rep(1,length((-1:35))))
-  y <- fixef(mod)[1] + (nd$age * fixef(mod)[2]) + (nd$age2 * fixef(mod)[3])
-  points(nd$age, y, type='l', col=4, lwd=3)
-} else {
-  for(i in 1:nrow(coef(lmod)$site)){
+    y <- fixef(mod)[1] + (nd$age * fixef(mod)[2]) + (nd$age2 * fixef(mod)[3])
+    points(nd$age, y, type='l', col=col, lwd=4)
+  } else {
+    for(i in 1:nrow(coef(lmod)$site)){
+      nd <- data.frame(age=(-1:35), site=rep(1,length((-1:35))))
+      y <- coef(lmod)$site[i,1] + (nd$age * coef(lmod)$site[i,2])
+      #points(nd$age, y, type='l', col=rgb(0,0,1,0.5))
+    }
     nd <- data.frame(age=(-1:35), site=rep(1,length((-1:35))))
-    y <- coef(lmod)$site[i,1] + (nd$age * coef(lmod)$site[i,2])
-    points(nd$age, y, type='l', col=rgb(0,0,1,0.5))
+    y <- fixef(mod)[1] + (nd$age * fixef(mod)[2])
+    points(nd$age, y, type='l', col=col, lwd=4)
   }
-  nd <- data.frame(age=(-1:35), site=rep(1,length((-1:35))))
-  y <- fixef(mod)[1] + (nd$age * fixef(mod)[2])
-  points(nd$age, y, type='l', col=2, lwd=3)
+  r2 <- round(r.squaredGLMM(mod),2)
+  mtext(bquote('R'['m']^2~'='~.(round(r2[1], 2))~'; '~'R'['m']^2~'='~.(round(r2[2], 2))), cex=.8, line=-2)
 }
-
-r2 <- round(r.squaredGLMM(mod),2)
-mtext(paste('R2m =',r2[1],',','R2c =',r2[2]), cex=.8)
-}
+dev.off()
 
 
 
