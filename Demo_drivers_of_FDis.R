@@ -3,6 +3,7 @@
 ###########################################################
 library(RColorBrewer)
 library(FD)
+library(lme4)
 
 ###################
 #### LOAD DATA ####
