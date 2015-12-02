@@ -70,7 +70,7 @@ data <- droplevels(data)
 
 ####################################
 #### SUBSET DATA FOR TESTING... ####
-# data <- data[sample(1:nrow(data), 1000),]
+# data <- data[sample(1:nrow(data), 10000),]
 ####################################
 
 ### SELECT A TRAIT
@@ -80,11 +80,15 @@ data <- droplevels(data)
 data <- data[order(data$SPECIES, data$uID),]
 
 ### SCALE (+ center) DATA, OVERALL DATA!
+
+data <- data[data$growth < quantile(data$growth, 0.99),]
+data$growth.z <- scale(data$growth, center=F)
+
 # data$growth.z <- z.score(data$growth, center=F)
 
-g <- log(data$growth + abs(min(data$growth)))
-g <- ifelse(is.infinite(g), 0, g)
-data$growth.z <- z.score(g)
+# g <- log(data$growth + abs(min(data$growth)))
+# g <- ifelse(is.infinite(g), 0, g)
+# data$growth.z <- z.score(g)
 
 data$age.z <- z.score(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])
 data$plotAGB.z <- z.score(data$plotAGB)
@@ -124,6 +128,7 @@ d <- list(
 ################################################
 ##################### LMER #####################
 ################################################
+n = nrow(data)
 growth <- d$growth
 indiv <- d$indiv
 trait <- d$trait[d$species]
@@ -132,7 +137,7 @@ age <- d$age
 dbh <- d$dbh
 plot <- d$plot
 cen <- d$census
-agb <- d$plotagb
+plotagb <- d$plotagb
 plotba <- d$plotba
 
 # m1 <- lmer(growth ~ agb + trait + agb*trait + dbh + (1|plot) + (1|species) + (1|indiv))
@@ -223,8 +228,8 @@ cat(" model {
     
     growth[i] ~ dnorm(mu[i], tau[1])
     
-#    mu[i] <- exp(z[i])    
-    mu[i] <- z[i]
+    mu[i] <- exp(z[i])    
+#    mu[i] <- z[i]
     
     z[i] <- beta.1[species[i]]
     + beta.2[species[i]] * (plotagb[i])
@@ -268,42 +273,90 @@ sink()
 
 
 
+sink("OneLevel_Growth_Age_x_Trait.bug")
+
+cat(" model {
+    
+    for( i in 1:ntree ) {
+    
+    growth[i] ~ dnorm(mu[i], tau[1])
+    
+    mu[i] <- exp(z[i])    
+    
+    z[i] <- beta.1[species[i]]
+    + mu.beta[2] * (plotagb[i])
+    + beta.3[species[i]] * (dbh[i])
+    + mu.beta[4] * (trait[species[i]])
+    + mu.beta[5] * (trait[species[i]]) * (plotagb[i])
+    + indiv.effect[indiv[i]]
+    + plot.effect[plot[i]]
+    }
+    
+    for( j in 1:nspecies ) {
+    beta.1[j] ~ dnorm(mu.beta[1], tau[2])
+    beta.3[j] ~ dnorm(mu.beta[3], tau[3])
+    }
+    
+    for( i.a in 1:nindiv ) {
+    indiv.effect[i.a] ~ dnorm(0, tau[4])
+    }
+    
+    for( p.a in 1:nplot ) {
+    plot.effect[p.a] ~ dnorm(0, tau[5])
+    }
+    
+    for( m in 1:5 ) {
+    mu.beta[m] ~ dnorm(0, 1E-4)
+    }
+    
+    for( t in 1:5 ) {
+    tau[t] ~ dgamma(1E3, 1E3)
+    }
+    
+    sigma <- 1 / sqrt(tau)
+    }",
+fill=TRUE)
+sink()
+
+
+
 ################################################
 ### Set initial values, monitors, iterations and run model ###
 ################################################
 
 inits <- function (){
   list(
-    beta.t = rnorm(2),
-    mu.beta = rnorm(3),
-    tau = rgamma(6, 1E3, 1E3)
+#    beta.t = rnorm(2),
+#    mu.beta = rnorm(3),
+    mu.beta = rnorm(5),
+#    tau = rgamma(6, 1E3, 1E3)
+    tau = rgamma(5, 1E3, 1E3)
   )
 }
 
 # Set monitors
 #params <- c("beta.1","beta.2","beta.3","beta.t","mu.beta","sigma")
-params <- c("beta.t","mu.beta","sigma")
+#params <- c("beta.t","mu.beta","sigma")
+params <- c("mu.beta","sigma")
 
 # Run model
-adapt <- 1000
-iter <- 2500
-burn <- 1000
-thin <- 3
+adapt <- 500
+iter <- 1000
+burn <- 500
+thin <- 2
 chains <- 2
 
-reducedAGBmod <- jagsUI::jags(d, inits, params, 
-                    "Growth_Age_x_Trait.bug", 
+mod <- jagsUI::jags(d, inits, params, 
+                    "OneLevel_Growth_Age_x_Trait.bug",
+#                    "Growth_Age_x_Trait.bug", 
                     n.chains=chains, n.adapt=adapt, n.iter=iter, 
                     n.burnin=burn, n.thin=thin, parallel=F)
 
-AGBmod
-BAmod
-reducedAGBmod
-mod <- reducedAGBmod
+mod
 
-plot(reducedAGBmod)
+plot(mod)
 
-AGBmod <- update(AGBmod, n.iter=1000)
+mod <- update(mod, n.iter=1000)
 
 
 x <- cbind(unlist(mod$q50),unlist(mod$q2.5),unlist(mod$q97.5))
