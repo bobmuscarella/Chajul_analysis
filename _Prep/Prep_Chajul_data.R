@@ -41,6 +41,14 @@ d2 <- melt(d2, id.vars = c("uID","OLDSITE","SITE2","NUMBER",
 d2 <- d2[order(d2$uID),]
 d$HT <- d2$HT
 
+###### FIX DBH ERRORS (IDENTIFIED WITH ELBOW GREASE!)
+d$DBH[d$uID %in% 'FER4.1582.4883' & d$census %in% '13'] <- 1.9
+d$DBH[d$uID %in% 'GUM25.33.3309' & d$census %in% '12'] <- 4.5
+d$DBH[d$uID %in% 'GUM25.33.3309' & d$census %in% '14'] <- 8
+d$DBH[d$uID %in% 'GUM1.362.2881' & d$census %in% '14'] <- 3.45
+d$DBH[d$uID %in% 'PED2.745 A.11877' & d$census %in% '12'] <- 1.7
+d$DBH[d$uID %in% 'PEPED2.35 A.12121' & d$census %in% '9'] <- 5.93
+
 ### FIX HT ERRORS (IDENTIFIED WITH ELBOW GREASE!)
 d$HT[d$uID %in% 'RAF1.784.13815' & d$census %in% '6'] <- 640
 d$HT[d$uID %in% 'RAF0.714.15758' & d$census %in% '11'] <- 1180
@@ -66,7 +74,6 @@ d$HT[d$uID %in% 'HEC17.479.7007' & d$census %in% '10'] <- 1640
 d$HT[d$uID %in% 'HEC17.807.7047' & d$census %in% '3'] <- 270
 d$HT[d$uID %in% 'PED2.1139.12053' & d$census %in% '13'] <- 330
 d$HT[d$uID %in% 'RAF1.108.13136' & d$census %in% '9'] <- 1100
-
 
 ### THESE ARE QUESTIONABLE BUT LOOKS LIKE BREAKAGE:
 #d[d$uID %in% 'SAN8.346.17949' & d$census %in% '11',]
@@ -95,6 +102,7 @@ head(census)
 
 d$SITE.CENSUS <- paste(d$SITE2, d$census, sep='.')
 census$DATE <- as.Date(census$DATE, format='%m/%d/%y')
+census$DATE[census$SITE.CENSUS %in% 'PEHEC17.13'] <- "2013-11-30"  # was 11/30/12
 d$DATE <- census$DATE[match(d$SITE.CENSUS, as.character(census$SITE.CENSUS))]
 
 d$growth <- NA
@@ -112,16 +120,20 @@ d <- d[!d$uID %in% me$uID,]
 
 d <- d[order(d$census, d$uID),]
 g <- vector()
+ln_g <- vector()
 htg <- vector()
 s <- vector()
 int <- vector()
 for(census in 0:14){
 	c1 <- d[d$census == census,]
 	c2 <- d[d$census == (census+1),]
-	g <- c(g, c2$DBH - c1$DBH)
-	htg <- c(htg, c2$HT - c1$HT)
+	time <- c2$DATE - c1$DATE  
+  g <- c(g, (c2$DBH - c1$DBH)/as.numeric(time)) ### CALCULATE RAW INCREMENT
+	ln_g <- c(ln_g, (log(c2$DBH) - log(c1$DBH))/as.numeric(time)) ### CALCULATE INCREMENT BASED ON LOG DBH: (LN(D1)-LN(D2))/TIME
+  htg <- c(htg, c2$HT - c1$HT)
   if(census == 14){
     g <- c(g, rep(NA, times=nrow(c1)))
+    ln_g <- c(ln_g, rep(NA, times=nrow(c1)))
     htg <- c(htg, rep(NA, times=nrow(c1)))
   }
 	s <- c(s, ifelse(c1$status=='alive' & c2$status=='alive', 1, 
@@ -136,116 +148,131 @@ for(census in 0:14){
 }
 
 d$growth <- g
+d$annual.growth <- g*365
+d$log.growth <- ln_g
 d$ht.growth <- htg
 d$survive <- s
 d$int <- int
 d <- d[order(d$uID),]
 
-tmp <- d[d$SITE.CENSUS %in% censuses,]
+### GIVE AN NA TO GROWTH VALUES FOR THESE STEMS: OUTLIERS EXPLAINED BY DAMAGE CODES
+d[d$uID %in% 'FER1.684.2165' & d$census==7, c('growth','annual.growth','log.growth')] <- NA
+d[d$uID %in% 'FER4.300.4048' & d$census %in% c(7,8), c('growth','annual.growth','log.growth')] <- NA
+d[d$uID %in% 'FER4.L277.4410' & d$census %in% c(4:8), c('growth','annual.growth','log.growth')] <- NA
+d[d$uID %in% 'GUM1.163.2882' & d$census %in% 14, c('growth','annual.growth','log.growth')] <- NA
+d[d$uID %in% 'GUM3.814.5605' & d$census %in% 8, c('growth','annual.growth','log.growth')] <- NA
+d[d$uID %in% 'PED2.373.11749' & d$census %in% c(8:13), c('growth','annual.growth','log.growth')] <- NA
+d[d$uID %in% 'RAF1.22.13050' & d$census %in% 7, c('growth','annual.growth','log.growth')] <- NA
 
-names(tmp)
-tmp2 <- tmp[,!colnames(tmp) %in% c("OLDSITE","NUMBER","YEAR_RECRUIT","TAG","NOTES","variable") ]
-head(tmp2)
+# remove rows where census was not taken
+d <- d[d$SITE.CENSUS %in% censuses,]
 
-gdata <- tmp2[!is.na(tmp2$growth),]
-gdata <- gdata[order(gdata$uID),]
+# subset to columns of interest...
+d <- d[,!colnames(d) %in% c("OLDSITE","NUMBER","YEAR_RECRUIT","TAG","NOTES","variable") ]
 
-# # par(mfrow=c(2,2))
-# # hist(gdata$growth, xlim=c(-5,5), breaks=1000)
-# # abline(v=0,col=2,lwd=3)
-# # hist(gdata$growth, breaks=1000)
-# # abline(v=0,col=2,lwd=1)
+head(d)
 
-# checks <- gdata$uID[gdata$growth < -5]
-# checks <- c(gdata$uID[gdata$growth > 5], checks)
-# checks <- unique(checks)
-# write.csv(d[d$uID %in% checks,], file='check.growth_NEW.csv')
-# write.csv(d[d$uID %in% checks,], file='check.growth.csv')
+par(mfrow=c(2,2))
+hist(d$growth*365, xlim=c(-5,5), breaks=1000)
+abline(v=0,col=2,lwd=3)
+hist(d$growth*365, breaks=1000)
+abline(v=0,col=2,lwd=1)
 
+checks <- d$uID[d$annual.growth < -5]
+checks <- c(d$uID[d$annual.growth > 5], checks)
+checks <- unique(checks)
+write.csv(d[d$uID %in% checks,], file='check.growth_NEW.csv')
 
-# PERHAPS SOME MORE GROWTH OUTLIER CLEANING...
-# tapply(gdata$growth, gdata$SPECIES, sd, na.rm=T)* 10
+# plot(c(0,15), range(d$DBH[d$uID %in% checks], na.rm=T), col=NA)
+# for(i in 1:length(checks)){
+#  points(d$DBH[d$uID %in% checks[i]], type='l')
+# }
 
-# # head(gdata)
-# # plot(jitter(gdata$AGE00+gdata$census), gdata$growth, ylim=c(-2,5), pch=16, col=grey(.7,.1), xlab='Years since abandonment', ylab='Diameter growth (cm / yr)')
-# # points(1:30, tapply(gdata$growth, (gdata$AGE00+gdata$census), mean), pch=21, bg=5, cex=1.5)
-# # abline(h=0,col=2,lwd=1)
-
-# # plot(1:30, tapply(gdata$growth, (gdata$AGE00+gdata$census), mean), pch=21, bg=5, cex=1.5, ylim=c(-2,5), xlab='Years since abandonment', ylab='Diameter growth (cm / yr)')
-# # abline(h=0,col=2,lwd=1)
-# # for(i in 1:30)	{
-	# # x <- subset(gdata, (gdata$AGE00+gdata$census)==i)
-	# # y <- tapply(x$growth, x$SPECIES, mean, na.rm=T)
-	# # y <- y[!is.na(y)]
-	# # points(jitter(rep(i, length(y)),.5), y, pch=16, col=grey(.5,.5), cex=.75) 
-# # }
-# # points(1:30, tapply(gdata$growth, (gdata$AGE00+gdata$census), mean), pch=21, bg=5, cex=1.5)
+# plot(jitter(d$AGE00 + d$census), d$annual.growth, ylim=c(-2,5), pch=16, col=grey(.7,.1), xlab='Years since abandonment', ylab='Diameter growth (cm / yr)')
+# points(1:30, tapply(d$annual.growth, (d$AGE00 + d$census), mean, na.rm=T)[-31], pch=21, bg=5, cex=1.5)
+# abline(h=0, col=4)
 
 
 # REMOVE SPECIES WITH NO GROWTH
+gdata <- d[!is.na(d$annual.growth) & d$annual.growth < 7.5,]
+gdata <- gdata[!is.na(gdata$annual.growth) & gdata$annual.growth > (gdata$DBH * -0.25),]
+
 x <- is.na(tapply(!is.na(gdata$growth), gdata$SPECIES, sum)==0)
 gdata <- gdata[!gdata$SPECIES %in% names(x)[x==T],]
 gdata <- droplevels(gdata)
 
 gout <- vector()
 for(i in 1:30)	{
-	x <- subset(gdata, (gdata$AGE00+gdata$census)==i)
-	y <- tapply(x$growth, x$SPECIES, mean, na.rm=T)
+	x <- subset(gdata, (gdata$AGE00 + gdata$census)==i)
+	y <- tapply(x$log.growth, x$SPECIES, mean, na.rm=T)
 	gout <- cbind(gout, y)
 }
 
 abund <- log(tapply(gdata$growth, gdata$SPECIES, length)/50)+.2
 
-# # plot(1:30,gout[1,],ylim=c(-2,5), type='l', col=grey(0,.2), lwd=abund[1], xlab='Years since abandonment', ylab='Diameter growth (cm / yr)')
-# # for(i in 2:nrow(gout)){
-# # points(1:30,gout[i,], type='l',col=grey(0,.2), lwd=abund[i])
-# # }
-# # abline(h=0,lty=2,col=2,lwd=2)
+plot(1:30,gout[1,], ylim=c(-0.001,0.0035), type='l', col=grey(0,.2), lwd=abund[1], xlab='Years since abandonment', ylab='Diameter growth (cm / yr)')
+for(i in 2:nrow(gout)){
+points(1:30, gout[i,], type='l',col=grey(0,.2), lwd=abund[i])
+}
+abline(h=0,lty=2,col=2,lwd=2)
 
-head(tmp2)
-tmp2$ba <- 0.00007854 * (tmp2$DBH^2)
-ba <- tapply(tmp2$ba, tmp2$SITE.CENSUS, sum, na.rm=T)
-table(tmp2$AGE00+tmp2$census)
-
+d$ba <- 0.00007854 * (d$DBH^2)
+ba <- tapply(d$ba, d$SITE.CENSUS, sum, na.rm=T)
 
 census <- read.csv('site.censuses.csv')
 census <- census[census$TAKEN==TRUE,]
 census$year <- substring(as.character(as.Date(as.character(census$DATE), format='%m/%d/%y')),1,4)
 census$DATE <- as.Date(census$DATE, format='%m/%d/%y')
+census$DATE[census$SITE.CENSUS %in% 'PEHEC17.13'] <- "2013-11-30"  # was 11/30/12
 census$ba <- ba[match(as.character(census$SITE.CENSUS), names(ba))]
 head(census)
 
-ages <- tapply(tmp2$AGE00, tmp2$SITE2, mean)
-
-census$ages <- ages[match(as.character(census$SITE), names(ages))]
-
-# # col <- c(brewer.pal(9,"Set1")[c(1:5,7:9)],brewer.pal(8,"Set2"), brewer.pal(12,"Set3"))
-# # plot(census$ages+census$CENSUS, census$ba, type='l', col=0, xlab='Years since abandonment', ylab='Total basal area (m^2)')
-# # for(i in 1:length(unique(census$SITE))){
-	# # x <- census[census$SITE == unique(census$SITE)[i],]
-	# # print(x$ages+x$CENSUS)
-	# # points(x$ages+x$CENSUS, x$ba, type='l', col=col[i], lwd=3)
-# # }
+ages <- tapply(d$AGE00, d$SITE, mean)
+census$ages <- ages[match(as.character(census$SITE2), names(ages))]
 
 
-stemdens <- tapply(tmp2$SITE[tmp2$status=='alive'], tmp2$SITE.CENSUS[tmp2$status=='alive'], length)
+### PLOT BASAL AREA CHANGE OVER TIME
+col <- c(brewer.pal(9,"Set1"), brewer.pal(8,"Set2"), brewer.pal(12,"Set3"), brewer.pal(12,"Set3"))
+cen <- census[!census$PE,]
+plot(cen$ages + cen$CENSUS, cen$ba, type='l', col=0, xlab='Years since abandonment', ylab='Total basal area (m^2)')
+for(i in 1:length(unique(cen$SITE2))){
+  site <- unique(cen$SITE2)[i]
+  x <- cen[cen$SITE2 %in% site,]
+	print(x$ages + x$CENSUS)
+	points(x$ages + x$CENSUS, x$ba, type='l', col=col[i], lwd=3)
+	x <- (cen$ages + cen$CENSUS)[cen$SITE2 %in% site]
+	x <- x[length(x)]
+	y <- cen$ba[cen$SITE2==site]
+	y <- y[length(y)]
+	text(x, y, labels=site, col=col[i], font=2, cex=.7)	
+}
+
+stemdens <- tapply(d$SITE[d$status=='alive'], d$SITE.CENSUS[d$status=='alive'], length)
 census$stemdens <- stemdens[match(census$SITE.CENSUS, names(stemdens))]
 
-# # plot(census$ages+census$CENSUS, census$stemdens, col=0, xlab='Years since abandonment', ylab='Stems per plot')
-# # col <- c(brewer.pal(9,"Set1")[c(1:5,7:9)],brewer.pal(8,"Set2"), brewer.pal(12,"Set3"))
-# # for (i in 1:length(unique(census$SITE))){
-	# # site <- unique(census$SITE)[i]
-	# # points((census$ages+census$CENSUS)[census$SITE==site], census$stemdens[census$SITE==site], type='l', col=col[i], lwd=3)	
-# # }
+### PLOT STEM DENSITY CHANGE OVER TIME
+plot(census$ages + census$CENSUS, census$stemdens, col=0, xlab='Years since abandonment', ylab='Stems per plot')
+col <- c(brewer.pal(9,"Set1"), brewer.pal(12,"Set2"), brewer.pal(12,"Set3"), brewer.pal(12,"Set3"))
+for (i in 1:length(unique(census$SITE))){
+  site <- unique(census$SITE)[i]
+  points((census$ages + census$CENSUS)[census$SITE==site], census$stemdens[census$SITE==site], type='l', col=col[i], lwd=3)	
+  x <- (census$ages + census$CENSUS)[census$SITE==site]
+  x <- x[length(x)]
+  y <- census$stemdens[census$SITE==site]
+  y <- y[length(y)]
+  text(x, y, labels=site, col=col[i], font=2, cex=.7)
+}
 
-data <- tmp2
+data <- d
 
 setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
+#save(data, file="Chajul_data_processed_notraits_12.3.15.RDA")
 #save(data, file="Chajul_data_processed_notraits_11.20.15.RDA")
-#save(census, file="Chajul_census_processed_11.20.15.RDA")
 #save(data, file="Chajul_data_processed_notraits_4.27.15.RDA")
+#save(census, file="Chajul_census_processed_12.3.15.RDA")
+#save(census, file="Chajul_census_processed_11.20.15.RDA")
 #save(census, file="Chajul_census_processed_8.25.15.RDA")
-load("Chajul_data_processed_notraits_11.20.15.RDA")
+load("Chajul_data_processed_notraits_12.3.15.RDA")
 head(data)
 
 ## READ IN TRAIT DATA
@@ -253,12 +280,6 @@ tdata <- read.csv("Mean_traits_4.27.15.csv")
 wood <- read.csv("wood_traits_4.27.15.csv")
 tdata$WDMC <- wood$WDMC[match(tdata$species, wood$species)]
 data <- cbind(data, tdata[match(data$SPECIES, tdata$species),])
-
-#par(mfrow=c(4,4), mar=c(2,2,2,2))
-#for(t in 2:16) {hist(tdata[,t], main=names(tdata)[t])}
-#quartz()
-#par(mfrow=c(4,4), mar=c(2,2,2,2))
-#for(t in 2:16) {hist(log(tdata[,t]), main=names(tdata)[t])}
 
 data$log.LA <- log(data$LA)
 data$log.SLA <- log(data$SLA)
@@ -270,13 +291,14 @@ data$log.Ft <- log(data$Ft)
 data$log.P <- log(data$P)
 data$log.N <- log(data$N)
 
+#save(data, file="Chajul_data_processed_wtraits_12.3.15.RDA")
 #save(data, file="Chajul_data_processed_wtraits_11.20.15.RDA")
 #save(data, file="Chajul_data_processed_wtraits_4.27.15.RDA")
 
 ### ADD CHAVE WD AND GENUS-LEVEL AVERAGE WD DATA... 
 setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
-load("Chajul_data_processed_wtraits_11.20.15.RDA")
-load("Chajul_census_processed_8.25.15.RDA")
+load("Chajul_data_processed_wtraits_12.3.15.RDA")
+load("Chajul_census_processed_12.3.15.RDA")
 tdata <- read.csv('Mean_traits_4.27.15.csv')
 
 nowd <- sort(as.character(unique(data$SPECIES[is.na(data$WD)])))
@@ -293,19 +315,18 @@ data$genus <- unlist(lapply(strsplit(as.character(data$SPECIES), " "), function(
 newwd <- genus.wd[match(data$genus, names(genus.wd))]
 data$all.WD <- ifelse(!is.na(data$all.WD), data$all.WD, newwd)
 
-# PROBABLY SOME MORE HEIGHT ERRORS TO CLEAN BUT GOOD FOR NOW...
+### PROBABLY SOME MORE HEIGHT ERRORS TO CLEAN BUT GOOD FOR NOW...
 range(data$ht.growth,na.rm=T)
 hist(data$ht.growth, breaks=1000)
 checks <- data$uID[!is.na(data$ht.growth) & data$ht.growth<(-500)]
 checks <- c(checks, data$uID[!is.na(data$ht.growth) & data$ht.growth>(500)])
-unique(checks)
 
 ### CALCULATE AGB BASED ON CHAVE 2014 AND FULL WD DATA
 data$agb <- 0.0673 * ((data$all.WD * data$DBH^2 * data$HT/100)^0.976) 
   
-#save(data, file="Chajul_data_processed_wtraits_11.20.15.RDA")
-load("Chajul_data_processed_wtraits_11.20.15.RDA")
-load("Chajul_census_processed_8.25.15.RDA")
+#save(data, file="Chajul_data_processed_wtraits_12.3.15.RDA")
+load("Chajul_data_processed_wtraits_12.3.15.RDA")
+load("Chajul_census_processed_12.3.15.RDA")
 
 
 ###########################

@@ -10,8 +10,8 @@ library(arm)
 #### LOAD DATA ####
 ###################
 setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
-load("Chajul_data_processed_wtraits_11.20.15.RDA")
-load("Chajul_census_processed_8.25.15.RDA")
+load("Chajul_data_processed_wtraits_12.3.15.RDA")
+load("Chajul_census_processed_12.3.15.RDA")
 #load("Chajul_data_processed_wtraits_4.27.15.RDA")
 #load("Chajul_census_processed_8.25.15.RDA")
 totalBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
