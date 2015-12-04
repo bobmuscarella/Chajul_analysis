@@ -93,10 +93,11 @@ plot <- d$plot
 plotba <- d$plotba
 days <- d$days
 logdays <- log(data$int)
+zlogdays <- z.score(log(data$int))
 
 m1 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
             + (1|plot) + (1|species) + (1|indiv), 
-            family='binomial', offset=logdays)
+            family='binomial')
 
 m2 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
             + (1|plot) + (1|species) + (1|indiv), 
@@ -106,13 +107,18 @@ m3 <- glmer(alive ~ plotba + trait + plotba * trait + dbh
             + (1|plot) + (1|species) + (1|indiv), 
             family='binomial', offset=logdays)
 
+m4 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
+            + (1|plot) + (1|species) + (1|indiv), 
+            family='binomial', offset=zlogdays)
 
+AIC(m1);AIC(m2);AIC(m3);AIC(m4)
 
+summary(m1)
+summary(m2)
+summary(m3)
 summary(m4)
 
-r.squaredGLMM(m1);r.squaredGLMM(m2);r.squaredGLMM(m3)
-
-AIC(m1);AIC(m2);AIC(m3)
+# r.squaredGLMM(m1);r.squaredGLMM(m2);r.squaredGLMM(m3)
 
 mod <- m1
 
