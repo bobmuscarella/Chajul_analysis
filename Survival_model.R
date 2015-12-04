@@ -8,29 +8,30 @@ library(lme4)
 #### LOAD DATA ####
 ###################
 setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
-load("Chajul_data_processed_wtraits_11.20.15.RDA")
-#load("Chajul_data_processed_wtraits_4.27.15.RDA")
-load("Chajul_census_processed_8.25.15.RDA")
+load("Chajul_data_processed_wtraits_12.3.15.RDA")
+load("Chajul_census_processed_12.3.15.RDA")
 totalBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
 data$totalBA <- totalBA[match(data$SITE.CENSUS, names(totalBA))]
 data$relBA <- data$ba/data$totalBA
 census$totalBA <- totalBA[match(census$SITE.CENSUS, names(totalBA))]
 tdata <- read.csv('Mean_traits_4.27.15.csv')
 
-# FIX AN INCORRECT DATE
-data$int[data$SITE.CENSUS %in% c('PEHEC17.12')] <- 22+365
-
-
-head(data)
-
 age <- census$ages + census$CENSUS
 data$age <- as.vector(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])
-quadBA <- tapply(data$ba, paste(data$SITE.CENSUS, data$QUAD), sum, na.rm=T)
-data$quadBA <- quadBA[match(paste(data$SITE.CENSUS, data$QUAD), names(quadBA))]
+plotBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
+data$plotBA <- plotBA[match(data$SITE.CENSUS, names(plotBA))]
 
 ### FUNCTION TO CONVERT DBH TO BA
 dbh2ba <- function(dbh){
   return(((pi / 40000) * (dbh^2)))
+}
+
+### FUNCTION TO Z-TRANSFORM DATA
+z.score <- function (data, center=T) {
+  xm <- ifelse(center==T, mean (data, na.rm=TRUE), 0)
+  xsd <- sd(data, na.rm=TRUE)
+  xtrans <- (data - xm) / (2 * xsd) 
+  return(xtrans)
 }
 
 ###################
@@ -40,34 +41,28 @@ data <- data[!is.na(data$DBH),]
 data <- data[!is.na(data$survive),]
 data <- droplevels(data)
 
-
-##############################
-### SUBSET DATA FOR TESTING...
-# focsp <- sort(unique(data$species))[as.logical(rowSums((table(data$species, data$survive)==0) > 0))]
-# data <- data[data$species %in% focsp,]
-# data <- data[sample(1:nrow(data), 500),]
-##############################
-
-### GET PLOT AGES
-age <- census$ages + census$CENSUS
+####################################
+#### SUBSET DATA FOR TESTING... ####
+#data <- data[sample(1:nrow(data), 5000),]
+####################################
 
 ### SELECT A TRAIT
 focal.trait <- 'WD'
 data <- data[!is.na(data[,focal.trait]),]
 data <- droplevels(data)
+data <- data[order(data$SPECIES, data$uID),]
 
-data <- data[order(as.numeric(as.factor(data$uID)), data$species, data$SITE),]
+### SCALE (+ center) DATA, OVERALL DATA
+data$age.z <- z.score(data$age)
+data$plotBA.z <- z.score(data$plotBA)
+data$log.dbh.z <- z.score(log(data$DBH))
 
-### SCALE AND CENTER DATA
-z.score <- function (data) {
-  xm<- mean (data, na.rm=TRUE)
-  xsd<-sd(data, na.rm=TRUE)
-  xtrans<-(data-xm)/(2*xsd)  
+### Center trait values (and convert SLA to LMA)
+if(focal.trait=='log.SLA'){  
+  trait.z <- as.vector(z.score(tapply(1/data[,focal.trait], data$SPECIES, mean))) 
+} else {
+  trait.z <- as.vector(z.score(tapply(data[,focal.trait], data$SPECIES, mean))) 
 }
-
-data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
-data$age.z <- as.vector(scale(age[match(data$SITE.CENSUS, census$SITE.CENSUS)]))
-data$log.quadba.z <- unlist(tapply(log(data$quadBA), data$species, z.score))
 
 ### MAKE INPUT DATA
 d <- list(
@@ -81,45 +76,41 @@ d <- list(
   survive = data$survive,
   dbh = data$log.dbh.z,
   age = data$age.z,
-  quadba = data$log.quadba.z,
+  plotba = as.numeric(data$plotBA),
   plot = as.numeric(data$SITE),
-  census = as.numeric(as.factor(data$SITE.CENSUS))
+  days = z.score(data$int)
 )
 
 ################################################
 ##################### LMER #####################
 ################################################
+indiv <- d$indiv
 alive <- d$survive
 trait <- d$trait[d$species]
 species <- d$species
-age <- d$age
 dbh <- d$dbh
 plot <- d$plot
-cen <- d$census
-quadba <- d$quadba
-indiv <- d$indiv
+plotba <- d$plotba
+days <- d$days
 
-m1 <- glmer(alive ~ quadba + trait + quadba*trait + dbh + (1|plot) + (1|indiv), family='binomial')
-m2 <- glmer(alive ~ age + trait + age*trait + dbh + (1|plot) + (1|indiv) + (1|species), family='binomial')
+m1 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
+            + (1|plot) + (1|species) + (1|indiv), 
+            family='binomial')
 
 summary(m1)
-summary(m2)
 
 r.squaredGLMM(m1)
-r.squaredGLMM(m2)
 
 AIC(m1)
-AIC(m2)
-AIC(m2.2)
 
-mod <- m2.2
+mod <- m1
 
 est <- apply(fixef(sim(mod, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
 
-est <- est[,-1]
+#est <- est[,-1]
 pch <- ifelse(sign(est[1,])==sign(est[3,]), 16, 1)
 
-pdf(file='wd.coeff.pdf')
+#pdf(file='wd.coeff.pdf')
 par(mar=c(20,15,4,5))
 plot(est[2,], ncol(est):1, xlim=c(ifelse(min(est)>0,-.1,min(est)), ifelse(max(est)<0,.1,max(est))), pch=pch, axes=F, ylab='', xlab='Standard Effect')
 segments(est[1,], ncol(est):1, est[3,], lwd=3)
@@ -127,42 +118,42 @@ abline(v=0, lty=2)
 axis(2, labels=colnames(est), at=ncol(est):1, las=2)
 axis(1)
 box()
-dev.off()
+#dev.off()
 
 
 # PLOT INTERACTION PREDICTION
-newage <- seq(min(age),max(age),length.out=50)
-newdata.hightrait <- data.frame(age=newage, 
-                                trait=rep(max(trait), length(newage)), 
-                                dbh=rep(0,length(newage)), 
-                                plot=factor(rep(1,length(newage))),
-                                species=factor(rep(1,length(newage))),
-                                cen=factor(rep(1,length(newage))),
-                                indiv=factor(rep(1,length(newage))))
-newdata.lowtrait <- data.frame(age=newage, 
-                               trait=rep(min(trait), length(newage)), 
-                               dbh=rep(0,length(newage)), 
-                               plot=factor(rep(0,length(newage))),
-                               species=factor(rep(1,length(newage))),
-                               cen=factor(rep(1,length(newage))),
-                               indiv=factor(rep(1,length(newage))))
+newx <- seq(min(plotba),max(plotba),length.out=50)
+newdata.hightrait <- data.frame(plotba=newx, 
+                                trait=rep(max(trait), length(newx)), 
+                                dbh=rep(0,length(newx)), 
+                                plot=factor(rep(1,length(newx))),
+                                species=factor(rep(1,length(newx))),
+                                cen=factor(rep(1,length(newx))),
+                                indiv=factor(rep(1,length(newx))))
+newdata.lowtrait <- data.frame(plotba=newx, 
+                               trait=rep(min(trait), length(newx)), 
+                               dbh=rep(0,length(newx)), 
+                               plot=factor(rep(0,length(newx))),
+                               species=factor(rep(1,length(newx))),
+                               cen=factor(rep(1,length(newx))),
+                               indiv=factor(rep(1,length(newx))))
 y.pred.hightrait <- predict(mod, newdata.hightrait, allow.new.levels=T, type='response')
 y.pred.lowtrait <- predict(mod, newdata.lowtrait, allow.new.levels=T, type='response')
-#plot(data$age, predict(mod), pch=16, col=rgb(0,0,0,.5))
+# plot(data$plotBA, predict(mod), pch=16, col=rgb(0,0,0,.5))
 
-pdf(file='wd_interaction.pdf')
+#pdf(file='wd_interaction.pdf')
 par(mar=c(6,6,4,4))
 ylim <- range(c(y.pred.hightrait, y.pred.lowtrait))
-plot(newage, y.pred.hightrait, type='l', lwd=4, 
-     ylab='', xlab='Forest Age (years)', axes=F, cex.lab=1.5, 
+plot(newx, 1-y.pred.hightrait, type='l', lwd=4, 
+     ylab='', xlab='Plot Basal Area (m)', axes=F, cex.lab=1.5, 
      ylim=c(0,1))
-labs <- seq(0,35,by=5)
-axis(1, labels=labs, at=(labs - mean(data$age)) / sd(data$age), cex.axis=1.25)
+labs <- seq(0,2,by=0.2)
+axis(1, labels=labs, at=(labs - mean(data$plotBA)) / sd(data$plotBA), cex.axis=1.25)
 axis(2, las=2, cex.axis=1.25)
-points(newage, y.pred.lowtrait, type='l', col=2, lwd=4)
-legend('bottomleft',legend=c('High WD', 'Low WD'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
-mtext('Predicted Survival Probability', 2, 3.5, cex=1.5)
-dev.off()
+points(newx, 1-y.pred.lowtrait, type='l', col=2, lwd=4)
+legend('topleft',legend=c('High WD', 'Low WD'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
+mtext('Predicted Mortality Probability', 2, 3.5, cex=1.5)
+#dev.off()
 
 
 ######################################################
