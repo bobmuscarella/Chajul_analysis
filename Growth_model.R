@@ -12,8 +12,6 @@ library(arm)
 setwd("/Users/Bob/Projects/Postdoc/Demo Drivers of FD/DATA")
 load("Chajul_data_processed_wtraits_12.3.15.RDA")
 load("Chajul_census_processed_12.3.15.RDA")
-#load("Chajul_data_processed_wtraits_4.27.15.RDA")
-#load("Chajul_census_processed_8.25.15.RDA")
 totalBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
 data$totalBA <- totalBA[match(data$SITE.CENSUS, names(totalBA))]
 data$relBA <- data$ba/data$totalBA
@@ -38,8 +36,6 @@ z.score <- function (data, center=T) {
 ###################
 age <- census$ages + census$CENSUS
 data$age <- as.vector(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])
-quadBA <- tapply(data$ba, paste(data$SITE.CENSUS, data$QUAD), sum, na.rm=T)
-data$quadBA <- quadBA[match(paste(data$SITE.CENSUS, data$QUAD), names(quadBA))]
 plotBA <- tapply(data$ba, data$SITE.CENSUS, sum, na.rm=T)
 data$plotBA <- plotBA[match(data$SITE.CENSUS, names(plotBA))]
 plotAGB <- tapply(data$agb, data$SITE.CENSUS, sum, na.rm=T)
@@ -52,21 +48,35 @@ data <- droplevels(data)
 ### CHECK FOR GROWTH OUTLIERS...
 #outliers <- vector()
 #for(i in -30:30){
-#  outliers[i] <- length(data$uID[!is.na(data$growth) & data$growth > i])
+#  outliers[i] <- length(data$uID[!is.na(data$annual.growth) & data$annual.growth > i])
 #}
-#data <- data[!is.na(data$growth) & data$growth < 8,]
+
+### CONDIT METHOD TO EXCLUDE OUTLIERS
+Growth.Include <- (data$annual.growth < 7.5 & data$annual.growth > (data$DBH * -0.25))
 
 ### BCI METHOD TO EXCLUDE STEMS...
-Growth.Include <- (((data$growth*10) > 4 * (-(0.0062 * data$DBH + 0.904))) & ((data$growth*10) < 75))
+# Growth.Include <- (((data$growth*10) > 4 * (-(0.0062 * data$DBH + 0.904))) & ((data$growth*10) < 75))
+
+### REMOVE STEMS BASED ON SD CUTOFF
+# glim <- tapply(data$growth, data$SPECIES, sd, na.rm=T) * 5
+# glim <- glim[!is.na(glim)]
+# data$glim <- glim[match(data$species,names(glim))]
+# sum(abs(data$growth) > data$glim, na.rm=T)
+# data <- data[abs(data$growth) < data$glim,]
+
+
 data <- data[Growth.Include==T,]
 data <- droplevels(data)
 
-### REMOVE STEMS BASED ON SD CUTOFF
-#glim <- tapply(data$growth, data$SPECIES, sd, na.rm=T) * 5
-#glim <- glim[!is.na(glim)]
-#data$glim <- glim[match(data$species,names(glim))]
-#sum(abs(data$growth) > data$glim, na.rm=T)
-#data <- data[abs(data$growth) < data$glim,]
+
+data <- data[data$growth != 0,]
+
+
+hist(data$DBH[data$growth == 0], breaks=2000, xlim=c(0,20))
+
+hist(data$growth, breaks=2000, xlim=c(-0.001,0.001))
+
+
 
 ####################################
 #### SUBSET DATA FOR TESTING... ####
@@ -80,24 +90,14 @@ data <- droplevels(data)
 data <- data[order(data$SPECIES, data$uID),]
 
 ### SCALE (+ center) DATA, OVERALL DATA!
-
-data <- data[data$growth < quantile(data$growth, 0.99),]
-data$growth.z <- scale(data$growth, center=F)
-
-# data$growth.z <- z.score(data$growth, center=F)
-
-# g <- log(data$growth + abs(min(data$growth)))
-# g <- ifelse(is.infinite(g), 0, g)
-# data$growth.z <- z.score(g)
-
-data$age.z <- z.score(age[match(data$SITE.CENSUS, census$SITE.CENSUS)])
+data$growth.z <- as.vector(scale(data$log.growth, center=F))
+data$age.z <- z.score(data$age)
 data$plotAGB.z <- z.score(data$plotAGB)
 data$plotBA.z <- z.score(data$plotBA)
-data$log.dbh.z <- z.score(log(data$DBH))
+# data$log.dbh.z <- z.score(log(data$DBH))
 
 ### SCALE AND CENTER DATA, WITHIN SPECIES!
-# data$log.quadba.z <- unlist(tapply(log(data$quadBA), data$species, z.score))
-# data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
+data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
 
 if(focal.trait=='log.SLA'){  ### Convert SLA to LMA
 trait.z <- as.vector(z.score(tapply(1/data[,focal.trait], data$SPECIES, mean))) 
@@ -131,7 +131,7 @@ d <- list(
 n = nrow(data)
 growth <- d$growth
 indiv <- d$indiv
-trait <- d$trait[d$species]
+trait <- trait.z[d$species]
 species <- d$species
 age <- d$age
 dbh <- d$dbh
@@ -140,28 +140,24 @@ cen <- d$census
 plotagb <- d$plotagb
 plotba <- d$plotba
 
-# m1 <- lmer(growth ~ agb + trait + agb*trait + dbh + (1|plot) + (1|species) + (1|indiv))
-# m2 <- lmer(growth ~ plotba + trait + plotba*trait + dbh + (1|plot) + (1|species) + (1|indiv))
-# m3 <- lmer(growth ~ age + trait + age*trait + dbh + (1|plot) + (1|species) + (1|indiv))
+m1 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (1|plot) + (1|species) + (1|indiv))
+m2 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (plotba|plot) + (plotba|species) + (1|indiv))
+m3 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (plotba|plot) + (0 + plotba|species) + (1|indiv))
 
+r.squaredGLMM(m1); r.squaredGLMM(m2)
 
-m1 <- lmer(growth ~ agb + trait + agb * trait + dbh + (1|plot) + (1|species) + (1|indiv))
-m2 <- lmer(growth ~ agb + trait + agb * trait + dbh + (agb|plot) + (agb|species) + (1|indiv))
-m3 <- lmer(growth ~ agb + trait + agb * trait + dbh + (agb|plot) + (0 + agb|species) + (1|indiv))
+AIC(m1)
 
-m4 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (1|plot) + (1|species) + (1|indiv))
-m5 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (plotba|plot) + (plotba|species) + (1|indiv))
-m6 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (plotba|plot) + (0 + plotba|species) + (1|indiv))
+mod <- m2
 
-r.squaredGLMM(m1); r.squaredGLMM(m2); r.squaredGLMM(m3)
-r.squaredGLMM(m4); r.squaredGLMM(m5); r.squaredGLMM(m6)
+qqnorm(resid(m1)); abline(0,1)
+qqnorm(resid(m2)); abline(0,1)
 
-AIC(m1); AIC(m2); AIC(m3)
-AIC(m4); AIC(m5); AIC(m6)
-
-mod <- m3
 
 est <- apply(fixef(sim(mod, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
+
+est1 <- apply(fixef(sim(m1, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
+est2 <- apply(fixef(sim(m2, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
 
 est <- est[,-1]
 pch <- ifelse(sign(est[1,])==sign(est[3,]), 16, 1)
@@ -174,7 +170,7 @@ abline(v=0, lty=2)
 axis(2, labels=colnames(est), at=ncol(est):1, las=2)
 axis(1)
 box()
-dev.off()
+#dev.off()
 
 
 # PLOT INTERACTION PREDICTION
@@ -200,17 +196,17 @@ y.pred.lowtrait <- predict(mod, newdata.lowtrait, allow.new.levels=T)
 par(mar=c(6,6,4,4))
 ylim <- range(y.pred.lowtrait, y.pred.hightrait)
 plot(newx, y.pred.hightrait, type='l', lwd=4, 
-     ylab='', xlab='Plot AGB', axes=F, cex.lab=1.5, ylim=ylim)
-labs <- seq(0, 9000, by=1000)
-axis(1, labels=labs, at=(labs - mean(data$plotAGB)) / sd(data$plotAGB), cex.axis=1.25)
-labs2 <- seq(-2,2, by=0.5)
-rms <- sqrt(sum(data$growth^2)/(length(data$growth)-1)) # TO BACK TRANSFORM GROWTH PREDICTIONS TO CM / YEAR
+     ylab='', xlab='Plot BA', axes=F, cex.lab=1.5, ylim=ylim)
+labs <- seq(0, 5, by=0.2)
+axis(1, labels=labs, at=(labs - mean(data$plotBA)) / sd(data$plotBA), cex.axis=1.25)
+labs2 <- seq(-2,2, by=0.2)
+rms <- sqrt(sum(data$annual.growth^2)/(length(data$annual.growth)-1)) # TO BACK TRANSFORM GROWTH PREDICTIONS TO CM / YEAR
 axis(2, labels=labs2, at=(labs2 / rms), las=2, cex.axis=1.25)
 points(newx, y.pred.lowtrait, type='l', col=2, lwd=4)
 legend('topright',legend=c('High LMA', 'Low LMA'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
 abline(h=0,lty=3)
 mtext(bquote('Predicted Growth Rate ( mm/yr'^1~')'), 2, 3.5, cex=1.5)
-dev.off()
+# dev.off()
 
 
 
@@ -229,13 +225,10 @@ cat(" model {
     growth[i] ~ dnorm(mu[i], tau[1])
     
     mu[i] <- exp(z[i])    
-#    mu[i] <- z[i]
     
     z[i] <- beta.1[species[i]]
-    + beta.2[species[i]] * (plotagb[i])
+    + beta.2[species[i]] * (plotba[i])
     + beta.3[species[i]] * (dbh[i])
-#    + beta.3[species[i]] * (trait[i])
-#    + beta.3[species[i]] * (trait[i]) * (plotagb[i])
     + indiv.effect[indiv[i]]
     + plot.effect[plot[i]]
     }
@@ -247,11 +240,11 @@ cat(" model {
     }
     
     for( i.a in 1:nindiv ) {
-     indiv.effect[i.a] ~ dnorm(0, tau[4])
+     indiv.effect[i.a] ~ dnorm(0, tau[5])
     }
     
     for( p.a in 1:nplot ) {
-      plot.effect[p.a] ~ dnorm(0, tau[5])
+      plot.effect[p.a] ~ dnorm(0, tau[6])
     }
     
     for( b in 1:2 ) {
@@ -283,33 +276,32 @@ cat(" model {
     
     mu[i] <- exp(z[i])    
     
-    z[i] <- beta.1[species[i]]
-    + mu.beta[2] * (plotagb[i])
-    + beta.3[species[i]] * (dbh[i])
-    + mu.beta[4] * (trait[species[i]])
-    + mu.beta[5] * (trait[species[i]]) * (plotagb[i])
+    z[i] <- mu.beta[1]
+    + mu.beta[2] * (plotba[i])
+    + mu.beta[3] * (trait[species[i]])
+    + mu.beta[4] * (trait[species[i]]) * (plotba[i])
+    + beta.1[species[i]] * (dbh[i])
     + indiv.effect[indiv[i]]
     + plot.effect[plot[i]]
     }
     
     for( j in 1:nspecies ) {
-    beta.1[j] ~ dnorm(mu.beta[1], tau[2])
-    beta.3[j] ~ dnorm(mu.beta[3], tau[3])
+    beta.1[j] ~ dnorm(mu.beta[5], tau[2])
     }
     
     for( i.a in 1:nindiv ) {
-    indiv.effect[i.a] ~ dnorm(0, tau[4])
+    indiv.effect[i.a] ~ dnorm(0, tau[3])
     }
     
     for( p.a in 1:nplot ) {
-    plot.effect[p.a] ~ dnorm(0, tau[5])
+    plot.effect[p.a] ~ dnorm(0, tau[4])
     }
     
     for( m in 1:5 ) {
     mu.beta[m] ~ dnorm(0, 1E-4)
     }
     
-    for( t in 1:5 ) {
+    for( t in 1:4 ) {
     tau[t] ~ dgamma(1E3, 1E3)
     }
     
@@ -326,27 +318,36 @@ sink()
 
 inits <- function (){
   list(
-#    beta.t = rnorm(2),
-#    mu.beta = rnorm(3),
-    mu.beta = rnorm(5),
-#    tau = rgamma(6, 1E3, 1E3)
-    tau = rgamma(5, 1E3, 1E3)
+    beta.t = rnorm(2),
+    mu.beta = rnorm(3),
+    tau = rgamma(6, 1E3, 1E3)
   )
 }
+
+
+
+inits <- function (){
+  list(
+    mu.beta = rnorm(5),
+    tau = rgamma(4, 1E3, 1E3)
+  )
+}
+
+
 
 # Set monitors
 #params <- c("beta.1","beta.2","beta.3","beta.t","mu.beta","sigma")
 #params <- c("beta.t","mu.beta","sigma")
-params <- c("mu.beta","sigma")
+params <- c("beta.1","mu.beta","sigma")
 
 # Run model
 adapt <- 500
-iter <- 1000
-burn <- 500
+iter <- 500
+burn <- 250
 thin <- 2
 chains <- 2
 
-mod <- jagsUI::jags(d, inits, params, 
+mod2 <- jagsUI::jags(d, inits, params, 
                     "OneLevel_Growth_Age_x_Trait.bug",
 #                    "Growth_Age_x_Trait.bug", 
                     n.chains=chains, n.adapt=adapt, n.iter=iter, 
@@ -362,6 +363,21 @@ mod <- update(mod, n.iter=1000)
 x <- cbind(unlist(mod$q50),unlist(mod$q2.5),unlist(mod$q97.5))
 x <- x[-nrow(x),]
 x <- x[-grep('sigma',rownames(x)),]
+pch <- ifelse(sign(x[,2])==sign(x[,3]), 16, 1)
+plot(x[,1],ylim=c(min(x), max(x)), pch=pch, axes=F, ylab='Std. Effect', xlab='', cex=1.5)
+segments(1:nrow(x), x[,2], 1:nrow(x), x[,3], lwd=2)
+abline(h=0,lty=2)
+axis(1, labels=rownames(x), at=1:nrow(x), las=2)
+axis(2); box()
+
+
+
+
+m <- mod2
+x <- cbind(unlist(m$q50),unlist(m$q2.5),unlist(m$q97.5))
+x <- x[-nrow(x),]
+x <- x[-grep('sigma',rownames(x)),]
+x <- x[grep('mu',rownames(x)),]
 pch <- ifelse(sign(x[,2])==sign(x[,3]), 16, 1)
 plot(x[,1],ylim=c(min(x), max(x)), pch=pch, axes=F, ylab='Std. Effect', xlab='', cex=1.5)
 segments(1:nrow(x), x[,2], 1:nrow(x), x[,3], lwd=2)
