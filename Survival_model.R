@@ -92,16 +92,27 @@ dbh <- d$dbh
 plot <- d$plot
 plotba <- d$plotba
 days <- d$days
+logdays <- log(data$int)
 
 m1 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
             + (1|plot) + (1|species) + (1|indiv), 
-            family='binomial')
+            family='binomial', offset=logdays)
 
-summary(m1)
+m2 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
+            + (1|plot) + (1|species) + (1|indiv), 
+            family='binomial', offset=days)
 
-r.squaredGLMM(m1)
+m3 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
+            + (1|plot) + (1|species) + (1|indiv), 
+            family='binomial', offset=logdays)
 
-AIC(m1)
+
+
+summary(m4)
+
+r.squaredGLMM(m1);r.squaredGLMM(m2);r.squaredGLMM(m3)
+
+AIC(m1);AIC(m2);AIC(m3)
 
 mod <- m1
 
@@ -111,7 +122,7 @@ est <- apply(fixef(sim(mod, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975
 pch <- ifelse(sign(est[1,])==sign(est[3,]), 16, 1)
 
 #pdf(file='wd.coeff.pdf')
-par(mar=c(20,15,4,5))
+# par(mar=c(20,15,4,5))
 plot(est[2,], ncol(est):1, xlim=c(ifelse(min(est)>0,-.1,min(est)), ifelse(max(est)<0,.1,max(est))), pch=pch, axes=F, ylab='', xlab='Standard Effect')
 segments(est[1,], ncol(est):1, est[3,], lwd=3)
 abline(v=0, lty=2)
@@ -122,7 +133,9 @@ box()
 
 
 # PLOT INTERACTION PREDICTION
-newx <- seq(min(plotba),max(plotba),length.out=50)
+newx <- seq(min(plotba), max(plotba), length.out=50)
+#newx <- seq(0, 5, length.out=50)
+
 newdata.hightrait <- data.frame(plotba=newx, 
                                 trait=rep(max(trait), length(newx)), 
                                 dbh=rep(0,length(newx)), 

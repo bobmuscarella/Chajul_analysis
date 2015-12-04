@@ -69,7 +69,7 @@ data <- data[Growth.Include==T,]
 data <- droplevels(data)
 
 
-data <- data[data$growth != 0,]
+# data <- data[data$growth != 0,]
 
 
 hist(data$DBH[data$growth == 0], breaks=2000, xlim=c(0,20))
@@ -89,20 +89,21 @@ data <- data[!is.na(data[,focal.trait]),]
 data <- droplevels(data)
 data <- data[order(data$SPECIES, data$uID),]
 
-### SCALE (+ center) DATA, OVERALL DATA!
+### SCALE (+ center) DATA, OVERALL DATA
 data$growth.z <- as.vector(scale(data$log.growth, center=F))
 data$age.z <- z.score(data$age)
 data$plotAGB.z <- z.score(data$plotAGB)
 data$plotBA.z <- z.score(data$plotBA)
-# data$log.dbh.z <- z.score(log(data$DBH))
+data$log.dbh.z <- z.score(log(data$DBH))
 
-### SCALE AND CENTER DATA, WITHIN SPECIES!
-data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
+### SCALE AND CENTER DATA, WITHIN SPECIES
+# data$log.dbh.z <- unlist(tapply(log(data$DBH), data$species, z.score))
 
-if(focal.trait=='log.SLA'){  ### Convert SLA to LMA
+
+### Center trait values (and convert SLA to LMA)
+if(focal.trait=='log.SLA'){  
 trait.z <- as.vector(z.score(tapply(1/data[,focal.trait], data$SPECIES, mean))) 
-}
-if(focal.trait!='log.SLA'){  ### Standardize trait values
+} else {
   trait.z <- as.vector(z.score(tapply(data[,focal.trait], data$SPECIES, mean))) 
 }
 
@@ -128,38 +129,25 @@ d <- list(
 ################################################
 ##################### LMER #####################
 ################################################
-n = nrow(data)
 growth <- d$growth
 indiv <- d$indiv
 trait <- trait.z[d$species]
 species <- d$species
-age <- d$age
 dbh <- d$dbh
 plot <- d$plot
-cen <- d$census
-plotagb <- d$plotagb
 plotba <- d$plotba
 
 m1 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (1|plot) + (1|species) + (1|indiv))
-m2 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (plotba|plot) + (plotba|species) + (1|indiv))
-m3 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (plotba|plot) + (0 + plotba|species) + (1|indiv))
 
 r.squaredGLMM(m1); r.squaredGLMM(m2)
-
+qqnorm(resid(m1)); abline(0,1)
 AIC(m1)
 
-mod <- m2
-
-qqnorm(resid(m1)); abline(0,1)
-qqnorm(resid(m2)); abline(0,1)
-
+mod <- m1
 
 est <- apply(fixef(sim(mod, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
 
-est1 <- apply(fixef(sim(m1, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
-est2 <- apply(fixef(sim(m2, n.sims=500)), 2, quantile, probs=c(0.025, 0.5, 0.975))
-
-est <- est[,-1]
+#est <- est[,-1]
 pch <- ifelse(sign(est[1,])==sign(est[3,]), 16, 1)
 #par(mar=c(4,10,4,6))
 #pdf(file='lma.coeff.pdf')
