@@ -47,7 +47,7 @@ data <- droplevels(data)
 ####################################
 
 ### SELECT A TRAIT
-focal.trait <- 'WD'
+focal.trait <- 'all.WD'
 data <- data[!is.na(data[,focal.trait]),]
 data <- droplevels(data)
 data <- data[order(data$SPECIES, data$uID),]
@@ -59,7 +59,7 @@ data$log.dbh.z <- z.score(log(data$DBH))
 
 ### Center trait values (and convert SLA to LMA)
 if(focal.trait=='log.SLA'){  
-  trait.z <- as.vector(z.score(tapply(1/data[,focal.trait], data$SPECIES, mean))) 
+  trait.z <- as.vector(z.score(tapply(1/data[,focal.trait], data$SPECIES, mean)))
 } else {
   trait.z <- as.vector(z.score(tapply(data[,focal.trait], data$SPECIES, mean))) 
 }
@@ -70,7 +70,7 @@ d <- list(
   nindiv = length(unique(data$uID)),
   nspecies = length(unique(data$SPECIES)),
   nplot = length(unique(data$SITE2)),
-  trait = as.vector(scale(tapply(data[,focal.trait], data$SPECIES, mean))),
+  trait = trait.z,
   species = as.numeric(data$SPECIES),
   indiv = as.numeric(as.factor(data$uID)),
   survive = data$survive,
@@ -97,28 +97,11 @@ zlogdays <- z.score(log(data$int))
 
 m1 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
             + (1|plot) + (1|species) + (1|indiv), 
-            family='binomial')
-
-m2 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
-            + (1|plot) + (1|species) + (1|indiv), 
             family='binomial', offset=days)
 
-m3 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
-            + (1|plot) + (1|species) + (1|indiv), 
-            family='binomial', offset=logdays)
-
-m4 <- glmer(alive ~ plotba + trait + plotba * trait + dbh 
-            + (1|plot) + (1|species) + (1|indiv), 
-            family='binomial', offset=zlogdays)
-
-AIC(m1);AIC(m2);AIC(m3);AIC(m4)
-
 summary(m1)
-summary(m2)
-summary(m3)
-summary(m4)
 
-# r.squaredGLMM(m1);r.squaredGLMM(m2);r.squaredGLMM(m3)
+# r.squaredGLMM(m1)
 
 mod <- m1
 
@@ -140,7 +123,7 @@ box()
 
 # PLOT INTERACTION PREDICTION
 newx <- seq(min(plotba), max(plotba), length.out=50)
-#newx <- seq(0, 5, length.out=50)
+#newx <- seq(0, 2, length.out=50)
 
 newdata.hightrait <- data.frame(plotba=newx, 
                                 trait=rep(max(trait), length(newx)), 
@@ -162,16 +145,15 @@ y.pred.lowtrait <- predict(mod, newdata.lowtrait, allow.new.levels=T, type='resp
 
 #pdf(file='wd_interaction.pdf')
 par(mar=c(6,6,4,4))
-ylim <- range(c(y.pred.hightrait, y.pred.lowtrait))
-plot(newx, 1-y.pred.hightrait, type='l', lwd=4, 
+plot(newx, y.pred.hightrait, type='l', lwd=4, 
      ylab='', xlab='Plot Basal Area (m)', axes=F, cex.lab=1.5, 
      ylim=c(0,1))
 labs <- seq(0,2,by=0.2)
 axis(1, labels=labs, at=(labs - mean(data$plotBA)) / sd(data$plotBA), cex.axis=1.25)
 axis(2, las=2, cex.axis=1.25)
-points(newx, 1-y.pred.lowtrait, type='l', col=2, lwd=4)
-legend('topleft',legend=c('High WD', 'Low WD'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
-mtext('Predicted Mortality Probability', 2, 3.5, cex=1.5)
+points(newx, y.pred.lowtrait, type='l', col=2, lwd=4)
+legend('bottomleft',legend=c('High trait', 'Low trait'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
+mtext('Predicted Survival Probability', 2, 3.5, cex=1.5)
 #dev.off()
 
 

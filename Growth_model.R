@@ -17,6 +17,7 @@ data$totalBA <- totalBA[match(data$SITE.CENSUS, names(totalBA))]
 data$relBA <- data$ba/data$totalBA
 census$totalBA <- totalBA[match(census$SITE.CENSUS, names(totalBA))]
 tdata <- read.csv('Mean_traits_4.27.15.csv')
+data$log.SV <- log(data$SV)
 
 ### FUNCTION TO CONVERT DBH TO BA
 dbh2ba <- function(dbh){
@@ -69,22 +70,13 @@ data <- data[Growth.Include==T,]
 data <- droplevels(data)
 
 
-# data <- data[data$growth != 0,]
-
-
-hist(data$DBH[data$growth == 0], breaks=2000, xlim=c(0,20))
-
-hist(data$growth, breaks=2000, xlim=c(-0.001,0.001))
-
-
-
 ####################################
 #### SUBSET DATA FOR TESTING... ####
 # data <- data[sample(1:nrow(data), 10000),]
 ####################################
 
 ### SELECT A TRAIT
-focal.trait <- 'log.SLA'
+focal.trait <- 'log.SV'
 data <- data[!is.na(data[,focal.trait]),]
 data <- droplevels(data)
 data <- data[order(data$SPECIES, data$uID),]
@@ -101,7 +93,7 @@ data$log.dbh.z <- z.score(log(data$DBH))
 
 
 ### Center trait values (and convert SLA to LMA)
-if(focal.trait=='log.SLA'){  
+if(focal.trait=='log.sFtP'){  
 trait.z <- as.vector(z.score(tapply(1/data[,focal.trait], data$SPECIES, mean))) 
 } else {
   trait.z <- as.vector(z.score(tapply(data[,focal.trait], data$SPECIES, mean))) 
@@ -129,7 +121,7 @@ d <- list(
 ################################################
 ##################### LMER #####################
 ################################################
-growth <- d$growth
+growth <- data$growth.z
 indiv <- d$indiv
 trait <- trait.z[d$species]
 species <- d$species
@@ -137,11 +129,8 @@ dbh <- d$dbh
 plot <- d$plot
 plotba <- d$plotba
 
-m1 <- lmer(growth ~ plotba + trait + plotba * trait + dbh + (1|plot) + (1|species) + (1|indiv))
-
-r.squaredGLMM(m1); r.squaredGLMM(m2)
-qqnorm(resid(m1)); abline(0,1)
-AIC(m1)
+m1 <- lmer(growth ~ plotba + trait + plotba * trait + dbh 
+           + (1|plot) + (1|species) + (1|indiv))
 
 mod <- m1
 
@@ -191,7 +180,7 @@ labs2 <- seq(-2,2, by=0.2)
 rms <- sqrt(sum(data$annual.growth^2)/(length(data$annual.growth)-1)) # TO BACK TRANSFORM GROWTH PREDICTIONS TO CM / YEAR
 axis(2, labels=labs2, at=(labs2 / rms), las=2, cex.axis=1.25)
 points(newx, y.pred.lowtrait, type='l', col=2, lwd=4)
-legend('topright',legend=c('High LMA', 'Low LMA'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
+legend('topright',legend=c('High trait', 'Low trait'), lty=1, col=1:2, bty='n', lwd=4, cex=1.25)
 abline(h=0,lty=3)
 mtext(bquote('Predicted Growth Rate ( mm/yr'^1~')'), 2, 3.5, cex=1.5)
 # dev.off()
