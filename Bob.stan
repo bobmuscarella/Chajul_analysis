@@ -14,14 +14,14 @@ data {
 
 
 parameters {
-    real beta_1[nspecies];
-    real beta_2[nspecies];
-    real beta_3[nspecies];
-    real mu_beta[3];
-    real beta_t[2];
+    real beta1[nspecies];
+    real beta2[nspecies];
+    real beta3[nspecies];
+    real mubeta[3];
+    real betat[2];
     real <lower=0.00001> tau[5];
-    real plot_effect[nplot];
-    real indiv_effect[nindiv];
+    real ploteffect[nplot];
+    real indiveffect[nindiv];
 
 
 }
@@ -30,9 +30,8 @@ transformed parameters {
    real mu[n];
 for(i in 1:n)
 {
-mu[i]<-exp(beta_1[species[i]]+beta_2[species[i]]+beta_3[species[i]]+plot_effect[plot[i]]+indiv_effect[indiv[i]]);
+mu[i]<-beta1[species[i]]+beta2[species[i]]* plotagb[i]+beta3[species[i]]*dbh[i]+ploteffect[plot[i]]+indiveffect[indiv[i]];
 
-#mu[i]<-beta_1[species[i]]+beta_2[species[i]]+beta_3[species[i]]+plot_effect[plot[i]]+indiv_effect[indiv[i]]; # or without exp link
 }
 }
 
@@ -45,29 +44,29 @@ tau[i]~gamma(100,100);
 
 for(i in 1:3)
 {
-mu_beta[i]~normal(0,100);
+mubeta[i]~normal(0,100);
 }
 
 for(i in 1:2)
 {
-beta_t[i]~normal(0,100);
+betat[i]~normal(0,100);
 }
 
     for(i in 1:nplot)  
 {
-plot_effect[i]~normal(0,tau[5]);
+ploteffect[i]~normal(0,tau[5]);
 }
 
     for(i in 1:nindiv)  
 {
-indiv_effect[i]~normal(0,tau[4]);
+indiveffect[i]~normal(0,tau[4]);
 }
     
   for(i in 1: nspecies)
     {
-        beta_1[i]~normal(mu_beta[1]+beta_t[1]*trait[i],tau[2]);  
-        beta_2[i]~normal(mu_beta[2]+beta_t[2]*trait[i],tau[3]);  
-        beta_3[i]~normal(mu_beta[3],tau[4]);  
+        beta1[i]~normal(mubeta[1]+betat[1]*trait[i],tau[2]);  
+        beta2[i]~normal(mubeta[2]+betat[2]*trait[i],tau[3]);  
+        beta3[i]~normal(mubeta[3],tau[4]);  
     }
 
     for(i in 1:n)  
