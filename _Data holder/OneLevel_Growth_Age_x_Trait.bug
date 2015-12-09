@@ -1,0 +1,38 @@
+ model {
+    
+    for( i in 1:ntree ) {
+    
+    growth[i] ~ dnorm(mu[i], tau[1])
+
+    mu[i] <- mu.beta[1]
+    + mu.beta[2] * (plotba[i])
+    + mu.beta[3] * (trait[species[i]])
+    + mu.beta[4] * (trait[species[i]]) * (plotba[i])
+    + mu.beta[5] * (dbh[i])
+    + sp.effect[species[i]]
+    + indiv.effect[indiv[i]]
+    + plot.effect[plot[i]]
+    }
+
+    for( s.e in 1:nspecies ) {
+    sp.effect[s.e] ~ dnorm(0, tau[2])
+    }
+
+    for( i.e in 1:nindiv ) {
+    indiv.effect[i.e] ~ dnorm(0, tau[3])
+    }
+    
+    for( p.e in 1:nplot ) {
+    plot.effect[p.e] ~ dnorm(0, tau[4])
+    }
+    
+    for( m in 1:5 ) {
+    mu.beta[m] ~ dnorm(0, 1E-4)
+    }
+    
+    for( t in 1:4 ) {
+    tau[t] ~ dgamma(1E3, 1E3)
+    }
+    
+    sigma <- 1 / sqrt(tau)
+    }

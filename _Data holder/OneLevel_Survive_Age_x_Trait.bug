@@ -1,0 +1,44 @@
+ model {
+    
+    for( i in 1:ntree ) {
+    
+    survive[i] ~ dinterval(t[i], days[i])
+    
+    t[i] ~ dweib(r, mu[i])
+    
+    mu[i] <- exp(z[i])
+    
+    z[i] <- beta[1] * sp.effect[species[i]]
+    + beta[2] * (plotba[i])
+    + beta[3] * (trait[species[i]])
+    + beta[4] * (plotba[i]) * (trait[species[i]])
+    + beta[5] * (dbh[i])
+#    + sp.effect[species[i]]
+    + indiv.effect[indiv[i]]
+    + plot.effect[plot[i]]
+    }
+    
+    for( i.s in 1:nspecies ) {
+      sp.effect[i.s] ~ dnorm(0, tau[1])
+    }
+
+    for( i.a in 1:nindiv ) {
+      indiv.effect[i.a] ~ dnorm(0, tau[2])
+    }
+    
+    for( p.a in 1:nplot ) {
+      plot.effect[p.a] ~ dnorm(0, tau[3])
+    }
+    
+    for( b in 1:5 ) {
+    beta[b] ~ dnorm(0, 1E-4)
+    }
+    
+    for( t in 1:3 ) {
+    tau[t] ~ dgamma(1E3, 1E3)
+    }
+    
+    r ~ dgamma(1, 1E3)
+    sigma <- 1 / sqrt(tau)
+    
+    }
